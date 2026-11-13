@@ -34,18 +34,32 @@ public partial class App : Application
         }
 
         DispatcherUnhandledException += (_, args) => { Log.Error(args.Exception, "Dispatcher"); args.Handled = true; };
-        AppDomain.CurrentDomain.UnhandledException += (_, args) => Log.Error((Exception)args.ExceptionObject, "AppDomain");
+        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+        {
+            Log.Error(args.ExceptionObject as Exception ?? new Exception(args.ExceptionObject?.ToString()), "AppDomain");
+            _tray?.Dispose(); // the process is going down: don't leave a ghost icon in the tray
+        };
         TaskScheduler.UnobservedTaskException += (_, args) => { Log.Error(args.Exception, "Task"); args.SetObserved(); };
 
         _window = new GlassWindow();
         _window.Hidden += TrimWorkingSet;
         _tray = new Tray(ExitFromTray);
-        _hook = new KeyboardHook(Dispatcher);
-        _hook.DoubleCtrl += OnDoubleCtrl;
         _ = SingleInstance.ListenAsync(OpenEditor);
-
         if (path is not null) OpenEditor(path);
         else Prewarm();
+        // After the first frame, so the first double Ctrl doesn't pay for cold COM and UI Automation.
+        Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () =>
+        {
+            ExplorerSelection.Warm();
+            if (!_window.IsVisible) TrimWorkingSet();
+        });
+
+        try
+        {
+            _hook = new KeyboardHook(Dispatcher);
+            _hook.DoubleCtrl += OnDoubleCtrl;
+        }
+        catch (Exception ex) { Log.Error(ex, "KeyboardHook install"); } // "Abrir con…" and the tray still work
     }
 
     /// <summary>Renders the window once off screen and hides it, so the first real open is already warm.</summary>
@@ -62,7 +76,6 @@ public partial class App : Application
             _window.ShowActivated = true;
             if (_window.Left != OffScreen) return; // a real open came first
             _window.Hide();
-            TrimWorkingSet();
         }
     }
 

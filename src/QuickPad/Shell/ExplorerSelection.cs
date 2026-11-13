@@ -10,6 +10,11 @@ public sealed record ExplorerHit(string Path, Rect? ItemBounds);
 
 public static class ExplorerSelection
 {
+    // ListItem keeps out the navigation pane, whose current folder is a selected TreeItem inside the same tab.
+    static readonly AndCondition SelectedListItem = new AndCondition(
+        new PropertyCondition(SelectionItemPattern.IsSelectedProperty, true),
+        new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem));
+
     /// <summary>The first selected file in the active tab of the given Explorer window; null if nothing is
     /// selected, the selection is a folder, or anything fails. Never throws. Synchronous; safe on an STA thread.</summary>
     public static ExplorerHit? Get(IntPtr explorerHwnd)
@@ -26,6 +31,18 @@ public static class ExplorerSelection
             Log.Error(ex, "ExplorerSelection.Get");
             return null;
         }
+    }
+
+    /// <summary>Pays the one-time cost of the first <see cref="Get"/> (late-bound Shell COM calls, UI Automation)
+    /// ahead of time. Shows nothing and never throws.</summary>
+    public static void Warm()
+    {
+        try
+        {
+            SelectedFilePath(0, 0); // walks Shell.Windows() through the same late-bound calls; matches no window
+            AutomationElement.RootElement.FindFirst(TreeScope.Children, SelectedListItem);
+        }
+        catch (Exception ex) { Log.Error(ex, "ExplorerSelection.Warm"); }
     }
 
     static string? SelectedFilePath(nint explorerHwnd, nint tab)
@@ -95,10 +112,7 @@ public static class ExplorerSelection
     {
         try
         {
-            // ListItem keeps out the navigation pane, whose current folder is a selected TreeItem inside the same tab.
-            var selected = AutomationElement.FromHandle(tab).FindFirst(TreeScope.Descendants, new AndCondition(
-                new PropertyCondition(SelectionItemPattern.IsSelectedProperty, true),
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem)));
+            var selected = AutomationElement.FromHandle(tab).FindFirst(TreeScope.Descendants, SelectedListItem);
             if (selected is null) return null;
             Rect r = selected.Current.BoundingRectangle;
             return r.IsEmpty || !double.IsFinite(r.X + r.Y + r.Width + r.Height) ? null : r;

@@ -30,8 +30,16 @@ public sealed class Tray : IDisposable
 
     static bool StartsWithWindows()
     {
-        using var key = Registry.CurrentUser.OpenSubKey(RunKey);
-        return key?.GetValue(RunValue) is not null;
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(RunKey);
+            return key?.GetValue(RunValue) is not null;
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Tray startup read");
+            return false;
+        }
     }
 
     static void ToggleStartup()
