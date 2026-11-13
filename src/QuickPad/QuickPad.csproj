@@ -9,6 +9,10 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\QuickPad.ico</ApplicationIcon>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <TieredPGO>true</TieredPGO>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <SatelliteResourceLanguages>es</SatelliteResourceLanguages>
     <!-- WPF app: DPI awareness belongs in the manifest, not in the WinForms SetHighDpiMode API. -->
     <NoWarn>$(NoWarn);WFO0003</NoWarn>
   </PropertyGroup>
