@@ -30,18 +30,25 @@ public partial class GlassWindow : Window
     }
 
     /// <summary>Shows the read-only preview of <paramref name="path"/> next to <paramref name="anchor"/>
-    /// (physical screen pixels), or next to the cursor when null.</summary>
-    public void ShowPreview(string path, Rect? anchor)
+    /// (physical screen pixels), or next to the cursor when null. With unsaved changes it first asks
+    /// Guardar / Descartar / Seguir editando, and does nothing on Seguir editando.</summary>
+    public async Task ShowPreview(string path, Rect? anchor)
     {
+        if (!await ResolveUnsavedChangesAsync(bringForward: true)) return;
         LoadPreview(path);
         Width = PreviewWidth;
         Pop(PlaceNear(anchor ?? CursorRect()));
     }
 
-    public void HideAnimated()
+    /// <summary>Closes the window; with unsaved changes it asks first and stays open on Seguir editando.</summary>
+    public void HideAnimated() => _ = CloseAsync(bringForward: true);
+
+    /// <summary>Hides with the shrink animation, then frees the editor. Only once there is nothing left to save.</summary>
+    private void HideNow()
     {
         if (!IsVisible || _hiding) return;
         _hiding = true;
+        Editor.IsReadOnly = true; // keys typed during the animation would be lost with the reset
         Animate(0.9, 0, 180, new CubicEase { EasingMode = EasingMode.EaseIn }, completed: (_, _) =>
         {
             if (!_hiding) return; // reopened while closing

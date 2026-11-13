@@ -20,7 +20,8 @@ public partial class InlineDialog : UserControl
     public Task<int> Ask(string message, params string[] buttons)
     {
         Dismiss();
-        var pending = _pending = new TaskCompletionSource<int>();
+        // Asynchronous continuations: whoever awaited the replaced dialog resumes after this one is set up.
+        var pending = _pending = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
         Message.Text = message;
         Buttons.Children.Clear();
         for (int i = 0; i < buttons.Length; i++)

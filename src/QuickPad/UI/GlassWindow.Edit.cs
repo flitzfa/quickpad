@@ -16,6 +16,7 @@ public partial class GlassWindow
     private const string EditFooter = "Ctrl+S guarda · Ctrl+F busca · Esc cierra";
 
     private TextDocument? _doc;     // fully opened document being edited; null in preview
+    private Task<bool>? _resolving; // the open "Tenés cambios sin guardar." question, shared by every caller
     private string _savedText = ""; // last loaded or saved text, line endings normalized
 
     public string? CurrentPath { get; private set; }
@@ -23,9 +24,11 @@ public partial class GlassWindow
     /// <summary>True when the editor text differs from what was last loaded or saved.</summary>
     public bool IsDirty => _doc is not null && Normalize(Editor.Text) != _savedText;
 
-    /// <summary>Opens <paramref name="path"/> centered on the monitor with the cursor, directly in edit mode.</summary>
-    public async void ShowEditor(string path)
+    /// <summary>Opens <paramref name="path"/> centered on the monitor with the cursor, directly in edit mode.
+    /// With unsaved changes it first asks, like <see cref="ShowPreview"/>.</summary>
+    public async Task ShowEditor(string path)
     {
+        if (!await ResolveUnsavedChangesAsync(bringForward: true)) return;
         LoadPreview(path);
         var workArea = WorkArea(System.Windows.Forms.Screen.FromPoint(System.Windows.Forms.Cursor.Position));
         Width = Math.Min(EditWidth, workArea.Width - 2 * Gap);
@@ -37,21 +40,34 @@ public partial class GlassWindow
     }
 
     /// <summary>When there are unsaved changes, asks Guardar / Descartar / Seguir editando.
-    /// True when the caller may go on (nothing to save, saved, or discarded).</summary>
-    public async Task<bool> ResolveUnsavedChangesAsync()
+    /// True when the caller may go on (nothing to save, saved, or discarded). A request that arrives while
+    /// the question is open waits for the same answer instead of replacing the dialog.</summary>
+    /// <param name="bringForward">Activate the window first: the request came from outside (hook, "Abrir con…"),
+    /// not from the user clicking away.</param>
+    private Task<bool> ResolveUnsavedChangesAsync(bool bringForward = false)
     {
-        if (!IsDirty) return true;
-        switch (await Ask("Tenés cambios sin guardar.", "Guardar", "Descartar", "Seguir editando"))
+        if (!IsDirty) return Task.FromResult(true);
+        if (bringForward && IsVisible) Activate();
+        return _resolving ??= Resolve();
+
+        async Task<bool> Resolve()
         {
-            case 0: return await SaveAsync();
-            case 1: return true;
-            default: return false;
+            try
+            {
+                switch (await Ask("Tenés cambios sin guardar.", "Guardar", "Descartar", "Seguir editando"))
+                {
+                    case 0: return await SaveAsync();
+                    case 1: _savedText = Normalize(Editor.Text); return true; // discarded: every caller now resets or hides
+                    default: return false;
+                }
+            }
+            finally { _resolving = null; }
         }
     }
 
-    private async Task CloseAsync()
+    private async Task CloseAsync(bool bringForward = false)
     {
-        if (await ResolveUnsavedChangesAsync()) HideAnimated();
+        if (await ResolveUnsavedChangesAsync(bringForward)) HideNow();
     }
 
     protected override async void OnPreviewKeyDown(KeyEventArgs e)
@@ -92,23 +108,7 @@ public partial class GlassWindow
     private async Task EnterEditAsync(Point? click, bool grow)
     {
         if (_doc is not null || CurrentPath is not { } path || PreviewText.Visibility != Visibility.Visible) return;
-        TextDocument doc;
-        try
-        {
-            long length = new FileInfo(path).Length; // before Open: a full Open allocates the whole file
-            if (length > TextFile.EditSizeLimit
-                && await Ask($"Es un archivo grande ({length / (1024.0 * 1024):0.#} MB). ¿Editarlo igual?", "Editar", "Cancelar") != 0)
-                return;
-            if (CurrentPath != path) return; // another file was shown while asking
-            doc = TextFile.Open(path);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotTextException)
-        {
-            await Ask(ex is NotTextException ? "Este archivo no es texto" : "No se pudo abrir el archivo", "Aceptar");
-            return;
-        }
-
-        LoadEditor(doc);
+        if (!await OpenIntoEditorAsync(path)) return;
         PreviewText.Visibility = Visibility.Collapsed;
         Editor.Visibility = Visibility.Visible;
         Footer.Text = EditFooter;
@@ -119,12 +119,34 @@ public partial class GlassWindow
         Editor.CaretIndex = Math.Max(caret, 0);
     }
 
+    /// <summary>Reads the whole file into the editor, asking first when it is large. False (after telling
+    /// the user why, when it failed) when nothing was loaded; the editor then keeps its text.</summary>
+    private async Task<bool> OpenIntoEditorAsync(string path)
+    {
+        string error;
+        try
+        {
+            long length = new FileInfo(path).Length; // before Open: a full Open allocates the whole file
+            if (length > TextFile.EditSizeLimit
+                && await Ask($"Es un archivo grande ({length / (1024.0 * 1024):0.#} MB). ¿Editarlo igual?", "Editar", "Cancelar") != 0)
+                return false;
+            if (CurrentPath != path) return false; // another file was shown while asking
+            LoadEditor(TextFile.Open(path));
+            return true;
+        }
+        catch (NotTextException) { error = "Este archivo no es texto"; }
+        catch (OutOfMemoryException) { error = "El archivo es demasiado grande para editarlo."; } // > 2 GB, or no room
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { error = "No se pudo abrir el archivo"; }
+        await Ask(error, "Aceptar");
+        return false;
+    }
+
     private void LoadEditor(TextDocument doc)
     {
         int caret = Editor.CaretIndex;
+        Editor.Text = doc.Text; // first: if this throws, the editor and _doc still match
         _doc = doc;
         _savedText = Normalize(doc.Text);
-        Editor.Text = doc.Text;
         Editor.IsUndoEnabled = false; // clears the undo stack: undo must not go back past the loaded text
         Editor.IsUndoEnabled = true;
         Editor.CaretIndex = Math.Min(caret, Editor.Text.Length);
@@ -138,6 +160,7 @@ public partial class GlassWindow
         BeginAnimation(HeightProperty, null);
         _doc = null;
         _savedText = "";
+        Editor.IsReadOnly = false;
         Editor.Clear();
         Editor.Visibility = Visibility.Collapsed;
         CloseSearch();
@@ -200,15 +223,7 @@ public partial class GlassWindow
     /// <summary>Replaces the editor text with the file on disk (the user chose to drop their changes).</summary>
     private async Task ReloadAsync()
     {
-        if (_doc is null) return;
-        try
-        {
-            LoadEditor(TextFile.Open(_doc.Path));
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotTextException)
-        {
-            await Ask(ex is NotTextException ? "Este archivo no es texto" : "No se pudo abrir el archivo", "Aceptar");
-        }
+        if (_doc is not null) await OpenIntoEditorAsync(_doc.Path);
     }
 
     /// <summary>Shows an inline dialog, then gives the keyboard back to the editor.</summary>
