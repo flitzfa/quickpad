@@ -1,6 +1,7 @@
 using System.IO;
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace QuickPad.Files;
 
@@ -54,6 +55,30 @@ public static class TextFile
         var text = new string(chars, 0, n);
 
         return new TextDocument(path, text, enc, DetectLineEnding(text), File.GetLastWriteTimeUtc(path), length, truncated);
+    }
+
+    public static TextDocument Save(TextDocument doc, string newText, bool force = false)
+    {
+        var path = doc.Path;
+        var info = new FileInfo(path);
+        if (!force && (!info.Exists || info.LastWriteTimeUtc != doc.LastWriteUtc || info.Length != doc.Length))
+            throw new FileChangedExternallyException(path);
+
+        var text = Regex.Replace(newText, "\r\n|\r|\n", doc.LineEnding == LineEnding.CrLf ? "\r\n" : "\n");
+        var tmp = path + ".quickpad.tmp";
+        try
+        {
+            using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                fs.Write(doc.Encoding.GetPreamble());
+                fs.Write(doc.Encoding.GetBytes(text));
+            }
+            if (info.Exists) File.Replace(tmp, path, null); else File.Move(tmp, path);
+        }
+        finally { File.Delete(tmp); }
+
+        info.Refresh();
+        return doc with { Text = text, LastWriteUtc = info.LastWriteTimeUtc, Length = info.Length };
     }
 
     private static LineEnding DetectLineEnding(string text)
