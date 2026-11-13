@@ -104,6 +104,12 @@ internal static partial class Native
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool IsChild(nint hWndParent, nint hWnd);
 
+    public const uint SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010;
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool SetWindowPos(nint hWnd, nint hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
+
     public const uint GA_ROOT = 2;
 
     [LibraryImport("user32.dll")]

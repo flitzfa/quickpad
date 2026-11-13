@@ -3,8 +3,11 @@ using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Media.Animation;
 using QuickPad.Files;
+using QuickPad.Interop;
 
 namespace QuickPad.UI;
 
@@ -161,8 +164,7 @@ public partial class GlassWindow
     private void ResetEditor()
     {
         Dialog.Dismiss();
-        BeginAnimation(WidthProperty, null);
-        BeginAnimation(HeightProperty, null);
+        StopGrow();
         _doc = null;
         _savedText = "";
         Editor.IsReadOnly = false;
@@ -171,22 +173,59 @@ public partial class GlassWindow
         CloseSearch();
     }
 
-    /// <summary>Grows the window to at least the edit size in 200 ms (a long preview is already taller),
-    /// kept inside the work area of its monitor.</summary>
+    /// <summary>Grows the window to at least the edit size in <see cref="GrowMs"/> (a long preview is already
+    /// taller), kept inside the work area of its monitor.
+    /// Size and position move together in one SetWindowPos (two WPF properties resized twice, jumping), on every
+    /// other frame: WPF drops the frame it is drawing when its window is resized, so resizing every frame drew
+    /// nothing until the end (bare glass, then a jump). A window region can't help: DWM paints the acrylic over the
+    /// whole window regardless. The editor is laid out at its final size first, so it doesn't reflow meanwhile.</summary>
     private void Grow()
     {
+        StopGrow();
         var workArea = WorkArea(System.Windows.Forms.Screen.FromHandle(_hwnd));
-        double width = Math.Min(Math.Max(ActualWidth, EditWidth), workArea.Width - 2 * Gap);
-        double height = Math.Min(Math.Max(ActualHeight, EditHeight), workArea.Height - 2 * Gap);
-        Left = Math.Clamp(Left, workArea.Left, workArea.Right - width);
-        Top = Math.Clamp(Top, workArea.Top, workArea.Bottom - height);
-        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-        foreach (var (property, to) in new[] { (WidthProperty, width), (HeightProperty, height) })
+        var from = new Rect(Left, Top, ActualWidth, ActualHeight);
+        double width = Math.Min(Math.Max(from.Width, EditWidth), workArea.Width - 2 * Gap);
+        double height = Math.Min(Math.Max(from.Height, EditHeight), workArea.Height - 2 * Gap);
+        var to = new Rect(Math.Clamp(from.Left, workArea.Left, workArea.Right - width),
+                          Math.Clamp(from.Top, workArea.Top, workArea.Bottom - height), width, height);
+
+        // The editor gets its final size up front, so it doesn't reflow (or flash scrollbars) while uncovered.
+        Root.Measure(to.Size);
+        Root.Arrange(new Rect(to.Size));
+        Editor.Width = Editor.ActualWidth;
+        Editor.Height = Editor.ActualHeight;
+
+        var toDevice = HwndSource.FromHwnd(_hwnd).CompositionTarget.TransformToDevice;
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        int frame = 0;
+        _growTick = (_, _) =>
         {
-            double from = (double)GetValue(property);
-            SetValue(property, to); // base value, so it stays once the animation (FillBehavior.Stop) ends
-            BeginAnimation(property, new DoubleAnimation(from, to, TimeSpan.FromMilliseconds(200)) { EasingFunction = ease, FillBehavior = FillBehavior.Stop });
-        }
+            if (frame++ % 2 == 1) return; // a frame without a resize, which WPF gets to draw
+            double t = Math.Min(clock.Elapsed.TotalMilliseconds / GrowMs, 1);
+            double k = 1 - Math.Pow(1 - t, 3); // ease-out cubic
+            var now = new Rect(Lerp(from.Left, to.Left, k), Lerp(from.Top, to.Top, k),
+                               Lerp(from.Width, to.Width, k), Lerp(from.Height, to.Height, k));
+            var r = Rect.Transform(now, toDevice);
+            Native.SetWindowPos(_hwnd, 0, (int)Math.Round(r.X), (int)Math.Round(r.Y), (int)Math.Round(r.Width),
+                                (int)Math.Round(r.Height), Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
+            (Left, Top, Width, Height) = (now.Left, now.Top, now.Width, now.Height);
+            if (t >= 1) StopGrow();
+        };
+        CompositionTarget.Rendering += _growTick;
+    }
+
+    private const double GrowMs = 240;
+    private EventHandler? _growTick;
+
+    private static double Lerp(double a, double b, double k) => a + (b - a) * k;
+
+    /// <summary>Ends a running grow where it is and lets the editor stretch with the window again.</summary>
+    private void StopGrow()
+    {
+        if (_growTick is null) return;
+        CompositionTarget.Rendering -= _growTick;
+        _growTick = null;
+        Editor.Width = Editor.Height = double.NaN;
     }
 
     /// <summary>Saves the editor text. True when it was written. On failure the text stays in the editor.</summary>
