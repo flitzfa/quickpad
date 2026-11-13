@@ -1,55 +1,49 @@
 # QuickPad
 
-Editor de texto para Windows 11 que vive en la bandeja. Con doble Ctrl sobre un archivo del Explorador (con el mouse encima o seleccionado) se abre una vista previa de vidrio al lado del archivo; un clic y ya lo editás.
+Editor de texto para Windows 11 que vive en la bandeja del sistema. Poné el mouse sobre un archivo en el Explorador, apretá **Ctrl dos veces** y se abre una vista previa al lado del archivo; un clic y ya lo estás editando. Pensado para tocar rápido un `.env`, una API key o un `.json` sin esperar a que abra un editor pesado.
 
-## Requisitos
+## Descargar
 
-- Windows 11
-- .NET 10 Desktop Runtime
+1. Bajá **`QuickPad.exe`** de la [última versión](https://github.com/flitzfa/quickpad/releases/latest).
+2. Ejecutalo. No hace falta instalar nada (ni .NET): queda corriendo en la bandeja, junto al reloj.
+3. Para que arranque solo, clic derecho en el ícono de la bandeja > **Iniciar con Windows**.
 
-## Instalar
+> Windows puede mostrar "Windows protegió su PC" porque el ejecutable no está firmado. Elegí **Más información > Ejecutar de todas formas**.
 
-```powershell
-dotnet publish src/QuickPad -c Release -r win-x64 --self-contained false -o publish
-```
-
-Genera `publish\QuickPad.exe`. Ejecutalo una vez: queda en la bandeja.
+Requisitos: Windows 11 (64 bits).
 
 ## Uso
 
-- Poné el mouse sobre un archivo en el Explorador y apretá **Ctrl dos veces** (menos de 350 ms entre toques): se abre la vista previa (primeras 40 líneas). Si el mouse no está sobre un archivo de la lista, se usa el archivo seleccionado; sobre una carpeta no pasa nada.
-- **Clic** en la vista previa para editar. **Ctrl+S** guarda, **Ctrl+F** busca, **Esc** cierra.
-- Guardar conserva la codificación y los saltos de línea originales.
-- Menú de la bandeja: **Iniciar con Windows** (activa/desactiva el arranque automático) y **Salir**.
+- **Ctrl dos veces** (menos de 350 ms entre toques) con el mouse sobre un archivo del Explorador: se abre la vista previa con las primeras 40 líneas. Si el mouse no está sobre un archivo, se usa el archivo seleccionado; sobre una carpeta no pasa nada.
+- Con la vista previa abierta, doble Ctrl sobre otro archivo cambia a ese archivo.
+- **Clic** en la vista previa para editar. **Ctrl+S** guarda, **Ctrl+F** busca, **Esc** cierra. Clic en otra ventana también cierra.
+- Si hay cambios sin guardar, siempre pregunta antes de cerrar o cambiar de archivo, también al apagar Windows.
+- Guardar conserva la codificación y los saltos de línea originales del archivo, y escribe de forma segura (un corte de luz no deja el archivo a medias).
+- Sigue el tema claro u oscuro de Windows.
 
-### Asociarlo con "Abrir con…"
+### Abrir archivos directo con QuickPad
 
 Clic derecho en un archivo > **Abrir con** > **Elegir otra aplicación** > **Buscar otra aplicación en este equipo** y elegí `QuickPad.exe`.
 
-## Log
+### Desinstalar
 
-`%LOCALAPPDATA%\QuickPad\log.txt` (incluye los tiempos de apertura).
+Desmarcá **Iniciar con Windows** en el menú de la bandeja, elegí **Salir** y borrá `QuickPad.exe`. El registro de errores está en `%LOCALAPPDATA%\QuickPad` (podés borrar esa carpeta también).
 
-## Mediciones
+## Compilar desde el código
 
-Build Release publicado (`--self-contained false`, ReadyToRun), esta máquina. Objetivos: ventana visible < 150 ms, ~20 MB en la bandeja, < 60 MB con la ventana visible.
+Requiere el [SDK de .NET 10](https://dotnet.microsoft.com/download).
 
-Se midió disparando el mismo manejador que el hook de teclado (el hook ignora teclas simuladas) sobre una ventana real del Explorador con un archivo seleccionado, 10 aperturas, la primera ~2 s después de iniciar. Tiempo desde el doble Ctrl hasta el primer frame:
+```powershell
+dotnet test
+dotnet publish src/QuickPad -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o dist
+```
 
-| Apertura | Total (ms) | De eso, leer la selección del Explorador (ms) |
-|---|---|---|
-| 1 (primera) | 131 | 77 |
-| 2 | 53 | 30 |
-| 3 | 55 | 33 |
-| 4 | 45 | 26 |
-| 5 | 58 | 37 |
-| 6 | 48 | 27 |
-| 7 | 49 | 31 |
-| 8 | 47 | 28 |
-| 9 | 46 | 27 |
-| 10 | 44 | 25 |
+Genera `dist\QuickPad.exe`, el mismo que se publica en las versiones.
 
-- Todas las aperturas llegan al objetivo de 150 ms: la primera en 131 ms y de la 2 a la 10 entre 44 y 58 ms. En otra corrida: 128 ms la primera y 45 a 67 ms el resto. La ruta del archivo se lee en el hilo de la interfaz mientras la posición del archivo en pantalla se busca en paralelo (solo dentro de la vista de archivos); si esa búsqueda tarda más de 250 ms, la ventana se abre junto al cursor.
-- RAM (WorkingSet): en la bandeja, 8 MB recién iniciado y 2 a 11 MB después de ocultar la ventana. Con la ventana visible: 91 MB después de la primera apertura y 42 a 65 MB en las otras nueve. **El objetivo de < 60 MB con la ventana visible no se cumple siempre**: falla en la primera apertura (91 MB) y en dos de las otras nueve (61 y 65 MB). PrivateMemorySize64: 74-92 MB al inicio, 86-99 MB después.
-- El working set se recorta un segundo después de ocultar la ventana (o de terminar el precalentamiento al iniciar): recortado al instante, el trabajo que queda en segundo plano volvía a cargar ~20 MB enseguida.
-- El precalentamiento al iniciar bloquea el hilo de la interfaz ~18 ms; el resto (~160 ms) corre en segundo plano.
+## Rendimiento
+
+Medido en la máquina de desarrollo: la ventana aparece entre 45 y 70 ms después del doble Ctrl (la primera vez tras iniciar, ~130 ms). En la bandeja usa entre 2 y 12 MB de RAM; con la ventana abierta, entre 40 y 90 MB.
+
+## Licencia
+
+[MIT](LICENSE)
