@@ -5,16 +5,18 @@ using QuickPad.Interop;
 
 namespace QuickPad.Input;
 
-/// <summary>Global low-level keyboard hook: raises <see cref="DoubleCtrl"/> on double Ctrl in File Explorer.
-/// Must be created on a thread with a message loop (the UI thread).</summary>
+/// <summary>Global low-level keyboard hook: raises <see cref="DoubleCtrl"/> on the dispatcher on double Ctrl in File Explorer.
+/// The hook lives on its own thread: Windows silently removes a low-level hook whose thread stops answering for about
+/// a second, which the UI thread does while it loads a big file or waits on Explorer.</summary>
 public sealed class KeyboardHook : IDisposable
 {
     const int HC_ACTION = 0, LLKHF_INJECTED = 0x10;
     const int WM_KEYDOWN = 0x100, WM_KEYUP = 0x101, WM_SYSKEYDOWN = 0x104, WM_SYSKEYUP = 0x105;
 
     readonly Dispatcher _dispatcher;
-    readonly DoubleTapDetector _detector = new();
+    readonly DoubleTapDetector _detector = new(); // hook thread only
     readonly Native.HookProc _proc; // field keeps the delegate alive for the GC
+    readonly uint _threadId;
     nint _hook;
     long _lastLog = -10_000;
 
@@ -24,9 +26,23 @@ public sealed class KeyboardHook : IDisposable
     {
         _dispatcher = dispatcher;
         _proc = HookCallback;
-        _hook = Native.SetWindowsHookEx(Native.WH_KEYBOARD_LL, Marshal.GetFunctionPointerForDelegate(_proc),
-            Native.GetModuleHandle(null), 0);
-        if (_hook == 0) throw new Win32Exception(Marshal.GetLastWin32Error());
+        int error = 0;
+        uint threadId = 0;
+        using var installed = new ManualResetEventSlim();
+        new Thread(() =>
+        {
+            threadId = Native.GetCurrentThreadId();
+            _hook = Native.SetWindowsHookEx(Native.WH_KEYBOARD_LL, Marshal.GetFunctionPointerForDelegate(_proc),
+                Native.GetModuleHandle(null), 0);
+            if (_hook == 0) error = Marshal.GetLastWin32Error();
+            installed.Set();
+            if (_hook == 0) return;
+            while (Native.GetMessage(out _, 0, 0, 0) > 0) { } // the hook is called from inside GetMessage
+            Native.UnhookWindowsHookEx(_hook);
+        }) { IsBackground = true, Name = "KeyboardHook" }.Start();
+        installed.Wait();
+        if (_hook == 0) throw new Win32Exception(error);
+        _threadId = threadId;
     }
 
     nint HookCallback(int nCode, nint wParam, nint lParam)
@@ -65,10 +81,6 @@ public sealed class KeyboardHook : IDisposable
             && info.hwndFocus != 0 && Native.ClassNameOf(info.hwndFocus) == "Edit";
     }
 
-    public void Dispose()
-    {
-        if (_hook == 0) return;
-        Native.UnhookWindowsHookEx(_hook);
-        _hook = 0;
-    }
+    /// <summary>Ends the hook thread's loop; the thread unhooks on its way out.</summary>
+    public void Dispose() => Native.PostThreadMessage(_threadId, Native.WM_QUIT, 0, 0);
 }

@@ -90,6 +90,26 @@ internal static partial class Native
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool SetForegroundWindow(nint hWnd);
 
+    public const uint WM_QUIT = 0x0012;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MSG { public nint hwnd; public uint message; public nint wParam, lParam; public uint time; public int ptX, ptY; public uint lPrivate; }
+
+    [LibraryImport("user32.dll", EntryPoint = "GetMessageW")]
+    public static partial int GetMessage(out MSG lpMsg, nint hWnd, uint wMsgFilterMin, uint wMsgFilterMax);
+
+    [LibraryImport("user32.dll", EntryPoint = "PostThreadMessageW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool PostThreadMessage(uint idThread, uint msg, nint wParam, nint lParam);
+
+    [LibraryImport("user32.dll", StringMarshalling = StringMarshalling.Utf16)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool ShutdownBlockReasonCreate(nint hWnd, string pwszReason);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool ShutdownBlockReasonDestroy(nint hWnd);
+
     public static unsafe string ClassNameOf(nint hWnd)
     {
         char* buf = stackalloc char[256];

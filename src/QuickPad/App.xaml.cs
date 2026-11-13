@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using QuickPad.Input;
@@ -23,7 +24,12 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-        string? path = e.Args.Length > 0 && e.Args[0].Length > 0 ? Path.GetFullPath(e.Args[0]) : null;
+        string? path = null;
+        if (e.Args.Length > 0 && e.Args[0].Length > 0)
+        {
+            try { path = Path.GetFullPath(e.Args[0]); }
+            catch (Exception ex) { Log.Error(ex, "Argumento"); } // a malformed path opens nothing, it doesn't crash
+        }
 
         _instance = SingleInstance.TryClaim();
         if (_instance is null)
@@ -115,9 +121,19 @@ public partial class App : Application
     protected override void OnSessionEnding(SessionEndingCancelEventArgs e)
     {
         base.OnSessionEnding(e);
-        // Cancelling the session end is not reliable on Windows 11, so this only leaves a trace.
-        if (_window?.IsDirty == true)
-            Log.Error(new InvalidOperationException($"Windows se cerró con cambios sin guardar en {_window.CurrentPath}"), "SessionEnding");
+        if (_window?.IsDirty != true) return;
+        Log.Error(new InvalidOperationException($"Windows se cierra con cambios sin guardar en {_window.CurrentPath}"), "SessionEnding");
+        e.Cancel = true;
+        _ = AskBeforeSessionEnds();
+    }
+
+    /// <summary>While the question is open, Windows' "apps preventing shutdown" screen names the reason.</summary>
+    async Task AskBeforeSessionEnds()
+    {
+        nint hwnd = new WindowInteropHelper(_window).Handle;
+        Native.ShutdownBlockReasonCreate(hwnd, "Tenés cambios sin guardar");
+        try { await _window.TryCloseAsync(); }
+        finally { Native.ShutdownBlockReasonDestroy(hwnd); }
     }
 
     protected override void OnExit(ExitEventArgs e)
