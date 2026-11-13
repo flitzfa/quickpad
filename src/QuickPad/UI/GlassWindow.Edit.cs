@@ -32,6 +32,7 @@ public partial class GlassWindow
     public async Task ShowEditor(string path)
     {
         if (!await ResolveUnsavedChangesAsync(bringForward: true)) return;
+        if (!await LeaveForNextAsync()) return;
         LoadPreview(path);
         var workArea = WorkArea(System.Windows.Forms.Screen.FromPoint(System.Windows.Forms.Cursor.Position));
         Width = Math.Min(EditWidth, workArea.Width - 2 * Gap);

@@ -35,9 +35,28 @@ public partial class GlassWindow : Window
     public async Task ShowPreview(string path, Rect? anchor)
     {
         if (!await ResolveUnsavedChangesAsync(bringForward: true)) return;
+        if (!await LeaveForNextAsync()) return;
         LoadPreview(path);
         Width = PreviewWidth;
         Pop(PlaceNear(anchor ?? CursorRect()));
+    }
+
+    private int _shows; // the latest show wins when they overlap
+
+    /// <summary>When a file is shown while another is on screen, the old card leaves like a quick close and the
+    /// window hides, so the new one arrives with the open spring instead of jumping in place (size and position
+    /// would change at once, with the old content and the glass on screen). False when a later show took over.</summary>
+    private async Task<bool> LeaveForNextAsync()
+    {
+        int show = ++_shows;
+        if (!IsVisible || _hiding) return true; // nothing on screen, or already closing (Pop takes that over)
+        _hiding = true; // its deactivation must not start a close
+        var done = new TaskCompletionSource();
+        Animate(0.94, 0, 120, new CubicEase { EasingMode = EasingMode.EaseIn }, completed: (_, _) => done.TrySetResult());
+        await Task.WhenAny(done.Task, Task.Delay(300));
+        if (show != _shows) return false;
+        Hide();
+        return true;
     }
 
     /// <summary>Closes the window; with unsaved changes it asks first and stays open on Seguir editando.</summary>
