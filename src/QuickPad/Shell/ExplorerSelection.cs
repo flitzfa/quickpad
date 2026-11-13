@@ -37,17 +37,24 @@ public static class ExplorerSelection
         }
     }
 
-    /// <summary>Pays the one-time cost of the first <see cref="GetAsync"/> ahead of time: the late-bound Shell COM
-    /// calls here, UI Automation on the thread pool where it will run. Shows nothing and never throws.</summary>
-    public static void Warm()
+    /// <summary>Pays the one-time cost of the first <see cref="GetAsync"/> ahead of time. Call it on the UI thread.
+    /// Shows nothing and never throws.</summary>
+    public static async Task Warm()
     {
-        try { SelectedFilePath(0, 0); } // walks Shell.Windows() through the same late-bound calls; matches no window
-        catch (Exception ex) { Log.Error(ex, "ExplorerSelection.Warm"); }
-        _ = Task.Run(() =>
-        {
-            try { FindSelected(AutomationElement.RootElement, TreeScope.Children); }
-            catch (Exception ex) { Log.Error(ex, "ExplorerSelection.Warm UIA"); }
-        });
+        // The late-bound call sites and UI Automation warm on the thread pool; only the Shell COM proxies are per
+        // apartment, so the UI thread is left with just those.
+        var uia = Task.Run(() => Try(() => FindSelected(AutomationElement.RootElement, TreeScope.Children), "Warm UIA"));
+        await Task.Run(WarmShell);
+        WarmShell();
+        await uia;
+    }
+
+    static void WarmShell() => Try(() => SelectedFilePath(0, 0), "Warm"); // walks Shell.Windows(); matches no window
+
+    static void Try(Action action, string context)
+    {
+        try { action(); }
+        catch (Exception ex) { Log.Error(ex, "ExplorerSelection." + context); }
     }
 
     static string? SelectedFilePath(nint explorerHwnd, nint tab)

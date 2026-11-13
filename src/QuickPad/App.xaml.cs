@@ -54,10 +54,10 @@ public partial class App : Application
         if (path is not null) OpenEditor(path);
         else Prewarm();
         // After the first frame, so the first double Ctrl doesn't pay for cold COM and UI Automation.
-        Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () =>
+        Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, async () =>
         {
-            ExplorerSelection.Warm();
-            if (!_window.IsVisible) TrimWorkingSet();
+            await ExplorerSelection.Warm();
+            TrimWorkingSet();
         });
 
         try
@@ -116,7 +116,13 @@ public partial class App : Application
         if (await _window.TryCloseAsync()) Shutdown();
     }
 
-    static void TrimWorkingSet() => Native.SetProcessWorkingSetSize(Native.GetCurrentProcess(), -1, -1);
+    /// <summary>Gives the memory of a hidden app back to Windows. A second later: the background work that the
+    /// warm-up or an open leaves behind paged ~20 MB back in right after an immediate trim.</summary>
+    async void TrimWorkingSet()
+    {
+        await Task.Delay(1000);
+        if (!_window.IsVisible) Native.SetProcessWorkingSetSize(Native.GetCurrentProcess(), -1, -1);
+    }
 
     protected override void OnSessionEnding(SessionEndingCancelEventArgs e)
     {

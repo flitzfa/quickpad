@@ -34,21 +34,22 @@ Clic derecho en un archivo > **Abrir con** > **Elegir otra aplicación** > **Bus
 
 Build Release publicado (`--self-contained false`, ReadyToRun), esta máquina. Objetivos: ventana visible < 150 ms, ~20 MB en la bandeja, < 60 MB con la ventana visible.
 
-Se midió disparando el mismo manejador que el hook de teclado (el hook ignora teclas simuladas) sobre una ventana real del Explorador, 10 aperturas. Tiempo desde el doble Ctrl hasta el primer frame:
+Se midió disparando el mismo manejador que el hook de teclado (el hook ignora teclas simuladas) sobre una ventana real del Explorador con un archivo seleccionado, 10 aperturas, la primera ~2 s después de iniciar. Tiempo desde el doble Ctrl hasta el primer frame:
 
 | Apertura | Total (ms) | De eso, leer la selección del Explorador (ms) |
 |---|---|---|
-| 1 (primera) | 261 | 186 |
-| 2 | 159 | 121 |
-| 3 | 153 | 123 |
-| 4 | 142 | 119 |
-| 5 | 139 | 110 |
-| 6 | 135 | 112 |
-| 7 | 133 | 108 |
-| 8 | 147 | 120 |
-| 9 | 132 | 109 |
-| 10 | 154 | 128 |
+| 1 (primera) | 131 | 77 |
+| 2 | 53 | 30 |
+| 3 | 55 | 33 |
+| 4 | 45 | 26 |
+| 5 | 58 | 37 |
+| 6 | 48 | 27 |
+| 7 | 49 | 31 |
+| 8 | 47 | 28 |
+| 9 | 46 | 27 |
+| 10 | 44 | 25 |
 
-- Aperturas 2 a 10: 132 a 159 ms. **Las aperturas 2, 3 y 10 (159, 153 y 154 ms) no llegan al objetivo de 150 ms**; el resto sí. La primera apertura (261 ms) tampoco. Casi todo el tiempo es la consulta al Explorador (~110-130 ms).
-- RAM (WorkingSet): en la bandeja tras ocultar la ventana, 5 a 18 MB (14 MB recién iniciado); con la ventana visible, 46 a 70 MB. **Con la ventana visible no se cumple siempre el objetivo de < 60 MB** (picos de hasta 70 MB justo después de abrir; luego se estabiliza en 46-61 MB). PrivateMemorySize64: ~73 MB al inicio, ~95-105 MB después de varias aperturas.
-- Recortar el working set al ocultar la ventana no empeora la apertura (sin recorte: 238 ms la primera y 128-148 ms de la 2 a la 10) y baja la RAM de ~130-173 MB a ~10 MB, así que se mantiene.
+- Todas las aperturas llegan al objetivo de 150 ms: la primera en 131 ms y de la 2 a la 10 entre 44 y 58 ms. En otra corrida: 128 ms la primera y 45 a 67 ms el resto. La ruta del archivo se lee en el hilo de la interfaz mientras la posición del archivo en pantalla se busca en paralelo (solo dentro de la vista de archivos); si esa búsqueda tarda más de 250 ms, la ventana se abre junto al cursor.
+- RAM (WorkingSet): en la bandeja, 8 MB recién iniciado y 2 a 11 MB después de ocultar la ventana. Con la ventana visible: 91 MB después de la primera apertura y 42 a 65 MB en las otras nueve. **El objetivo de < 60 MB con la ventana visible no se cumple siempre**: falla en la primera apertura (91 MB) y en dos de las otras nueve (61 y 65 MB). PrivateMemorySize64: 74-92 MB al inicio, 86-99 MB después.
+- El working set se recorta un segundo después de ocultar la ventana (o de terminar el precalentamiento al iniciar): recortado al instante, el trabajo que queda en segundo plano volvía a cargar ~20 MB enseguida.
+- El precalentamiento al iniciar bloquea el hilo de la interfaz ~18 ms; el resto (~160 ms) corre en segundo plano.
