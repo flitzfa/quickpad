@@ -11,8 +11,8 @@
         Foreground="{DynamicResource Text.Primary}"
         TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="ClearType"
         UseLayoutRounding="True">
-    <!-- SingleBorderWindow, not None: DWM only draws the acrylic backdrop for a window with a caption style.
-         WindowChrome removes the title bar and frame, so it still looks borderless. -->
+    <!-- SingleBorderWindow, not None: Windows 11 only gives a window with a caption style its rounded corners and
+         shadow. WindowChrome removes the title bar and frame, so it still looks borderless. -->
     <WindowChrome.WindowChrome>
         <WindowChrome GlassFrameThickness="-1" CaptionHeight="0" ResizeBorderThickness="0"
                       CornerRadius="0" UseAeroCaptionButtons="False" NonClientFrameEdges="None" />

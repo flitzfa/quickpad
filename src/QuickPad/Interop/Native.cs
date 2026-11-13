@@ -61,10 +61,8 @@ internal static partial class Native
     public static partial nint SetWindowLongPtr(nint hWnd, int nIndex, nint dwNewLong);
 
     public const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
-    public const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
-    public const int DWMWA_SYSTEMBACKDROP_TYPE = 38;
+    public const int DWMWA_WINDOW_CORNER_PREFERENCE = 33, DWMWA_CAPTION_COLOR = 35;
     public const int DWMWCP_ROUND = 2;
-    public const int DWMSBT_TRANSIENTWINDOW = 3; // Acrylic
 
     [LibraryImport("dwmapi.dll")]
     public static partial int DwmSetWindowAttribute(nint hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);

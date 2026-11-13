@@ -204,7 +204,7 @@ public partial class GlassWindow
     /// <summary>Jumps the window to at least the edit size (a long preview is already taller), kept inside the work
     /// area of its monitor, while the card's content is invisible, then brings the content back with the open
     /// spring from the top-left corner. A continuous grow can't be smooth here: WPF drops the frame it is drawing on
-    /// every resize, and DWM paints the acrylic over the whole window, so content and glass never stay in step.</summary>
+    /// every resize, so the window's edges and its content never stay in step.</summary>
     private void PopToEditSize()
     {
         var workArea = WorkArea(System.Windows.Forms.Screen.FromHandle(_hwnd));

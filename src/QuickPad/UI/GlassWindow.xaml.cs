@@ -10,7 +10,7 @@ using QuickPad.Interop;
 
 namespace QuickPad.UI;
 
-/// <summary>The single reusable acrylic window. Created once, then shown and hidden.</summary>
+/// <summary>The single reusable window: a flat, rounded card. Created once, then shown and hidden.</summary>
 public partial class GlassWindow : Window
 {
     private const double Gap = 8;
@@ -95,12 +95,23 @@ public partial class GlassWindow : Window
     {
         base.OnSourceInitialized(e);
         _hwnd = new WindowInteropHelper(this).Handle;
-        HwndSource.FromHwnd(_hwnd).CompositionTarget.BackgroundColor = Colors.Transparent; // otherwise black, not glass
-        // The caption style is what lets DWM draw the backdrop; without the system menu DWM draws no caption buttons.
+        // See-through around the card (the frame is extended over the whole window), so the open and close fades
+        // fade the card itself rather than to black. The card is a flat color; there is no acrylic backdrop.
+        HwndSource.FromHwnd(_hwnd).CompositionTarget.BackgroundColor = Colors.Transparent;
+        // The caption style keeps Windows 11's rounded corners and shadow; without the system menu DWM draws no caption buttons.
         Native.SetWindowLongPtr(_hwnd, Native.GWL_STYLE, Native.GetWindowLongPtr(_hwnd, Native.GWL_STYLE) & ~Native.WS_SYSMENU);
-        Native.DwmSetWindowAttribute(_hwnd, Native.DWMWA_SYSTEMBACKDROP_TYPE, Native.DWMSBT_TRANSIENTWINDOW);
         Native.DwmSetWindowAttribute(_hwnd, Native.DWMWA_WINDOW_CORNER_PREFERENCE, Native.DWMWCP_ROUND);
+        ApplyFrameColors();
+    }
+
+    /// <summary>Dark or light frame, and the frame painted in the card's color: when the window grows, Windows shows
+    /// the new area in the frame color until WPF paints it, which was a white flash.</summary>
+    private void ApplyFrameColors()
+    {
+        if (_hwnd == 0) return;
         Native.DwmSetWindowAttribute(_hwnd, Native.DWMWA_USE_IMMERSIVE_DARK_MODE, _light == true ? 0 : 1);
+        var c = ((SolidColorBrush)FindResource("Glass.Background")).Color;
+        Native.DwmSetWindowAttribute(_hwnd, Native.DWMWA_CAPTION_COLOR, c.R | c.G << 8 | c.B << 16); // COLORREF
     }
 
     protected override void OnDeactivated(EventArgs e)
@@ -239,6 +250,6 @@ public partial class GlassWindow : Window
         _light = light;
         Resources.MergedDictionaries.Clear();
         Resources.MergedDictionaries.Add(Theme.Dictionary(light));
-        if (_hwnd != 0) Native.DwmSetWindowAttribute(_hwnd, Native.DWMWA_USE_IMMERSIVE_DARK_MODE, light ? 0 : 1);
+        ApplyFrameColors();
     }
 }
