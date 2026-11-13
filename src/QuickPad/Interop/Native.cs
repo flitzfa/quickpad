@@ -90,6 +90,21 @@ internal static partial class Native
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool SetForegroundWindow(nint hWnd);
 
+    /// <summary>INPUT with a MOUSEINPUT union: type at 0, the pointer-aligned union at 8 (40 bytes on 64-bit).</summary>
+    [StructLayout(LayoutKind.Explicit, Size = 40)]
+    public struct MOUSE_INPUT { [FieldOffset(0)] public uint type; }
+
+    [LibraryImport("user32.dll")]
+    public static partial uint SendInput(uint cInputs, ref MOUSE_INPUT pInputs, int cbSize);
+
+    /// <summary>Injects a mouse event that moves nothing and clicks nothing. Windows only lets the process that got the
+    /// last input take the foreground, and the double Ctrl went to Explorer (same workaround as PowerToys).</summary>
+    public static void SendEmptyMouseInput()
+    {
+        var input = new MOUSE_INPUT { type = 0 }; // INPUT_MOUSE, dx = dy = flags = 0
+        SendInput(1, ref input, Marshal.SizeOf<MOUSE_INPUT>());
+    }
+
     public const uint WM_QUIT = 0x0012;
 
     [StructLayout(LayoutKind.Sequential)]

@@ -117,16 +117,20 @@ public partial class GlassWindow : Window
         Animate(1, 1, 250, new BackEase { Amplitude = 0.3, EasingMode = EasingMode.EaseOut }, fromStart: !wasVisible);
     }
 
-    /// <summary>Activates the window. Windows refuses the foreground to a background (tray) process; sharing the
-    /// input state of the foreground thread for a moment lets SetForegroundWindow through, so Esc and click-outside work.</summary>
+    /// <summary>Activates the window, so Esc and click-outside work. Windows refuses the foreground to a background
+    /// (tray) process that didn't get the last input; an empty injected mouse event makes it the last, and sharing
+    /// the foreground thread's input state is the fallback.</summary>
     private void BringForward()
     {
-        if (Activate() && Native.GetForegroundWindow() == _hwnd) return;
+        if (Native.GetForegroundWindow() == _hwnd) return;
+        Native.SendEmptyMouseInput();
+        if (Native.SetForegroundWindow(_hwnd) && Activate() && Native.GetForegroundWindow() == _hwnd) return;
         uint foreground = Native.GetWindowThreadProcessId(Native.GetForegroundWindow(), out _);
         uint self = Native.GetCurrentThreadId();
         bool attached = foreground != 0 && foreground != self && Native.AttachThreadInput(self, foreground, true);
         try { Native.SetForegroundWindow(_hwnd); }
         finally { if (attached) Native.AttachThreadInput(self, foreground, false); }
+        if (Native.GetForegroundWindow() != _hwnd) Log.Info("BringForward: Windows refused the foreground");
     }
 
     private void ShowSegments(IReadOnlyList<Segment> segments)
