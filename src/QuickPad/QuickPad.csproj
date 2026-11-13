@@ -8,11 +8,15 @@
     <UseWindowsForms>true</UseWindowsForms>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\QuickPad.ico</ApplicationIcon>
     <!-- WPF app: DPI awareness belongs in the manifest, not in the WinForms SetHighDpiMode API. -->
     <NoWarn>$(NoWarn);WFO0003</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <Using Remove="System.Windows.Forms" />
     <Using Remove="System.Drawing" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\QuickPad.ico" LogicalName="QuickPad.ico" />
   </ItemGroup>
 </Project>

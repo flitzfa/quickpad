@@ -47,7 +47,7 @@ public partial class GlassWindow
     private Task<bool> ResolveUnsavedChangesAsync(bool bringForward = false)
     {
         if (!IsDirty) return Task.FromResult(true);
-        if (bringForward && IsVisible) Activate();
+        if (bringForward && IsVisible) BringForward();
         return _resolving ??= Resolve();
 
         async Task<bool> Resolve()
@@ -64,6 +64,10 @@ public partial class GlassWindow
             finally { _resolving = null; }
         }
     }
+
+    /// <summary>Before the app exits: asks about unsaved changes (bringing the window forward).
+    /// False on Seguir editando; the window then stays as it is.</summary>
+    public Task<bool> TryCloseAsync() => ResolveUnsavedChangesAsync(bringForward: true);
 
     private async Task CloseAsync(bool bringForward = false)
     {

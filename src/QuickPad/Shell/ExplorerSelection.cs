@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Automation;
@@ -24,7 +23,7 @@ public static class ExplorerSelection
         }
         catch (Exception ex)
         {
-            LogError(ex, "ExplorerSelection.Get");
+            Log.Error(ex, "ExplorerSelection.Get");
             return null;
         }
     }
@@ -49,7 +48,7 @@ public static class ExplorerSelection
                 }
                 catch (COMException ex)
                 {
-                    LogError(ex, "ExplorerSelection window"); // a stale entry in Shell.Windows() must not hide the others
+                    Log.Error(ex, "ExplorerSelection window"); // a stale entry in Shell.Windows() must not hide the others
                 }
                 finally { Release(w); }
             }
@@ -106,7 +105,7 @@ public static class ExplorerSelection
         }
         catch (Exception ex)
         {
-            LogError(ex, "ExplorerSelection bounds");
+            Log.Error(ex, "ExplorerSelection bounds");
             return null;
         }
     }
@@ -115,7 +114,4 @@ public static class ExplorerSelection
     {
         if (o is not null && Marshal.IsComObject(o)) Marshal.ReleaseComObject(o);
     }
-
-    // shortcut: Debug only until Log exists (Task 9)
-    static void LogError(Exception ex, string context) => Debug.WriteLine($"{context}: {ex}");
 }

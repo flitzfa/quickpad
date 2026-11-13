@@ -72,6 +72,24 @@ internal static partial class Native
     public static int DwmSetWindowAttribute(nint hwnd, int attribute, int value) =>
         DwmSetWindowAttribute(hwnd, attribute, ref value, sizeof(int));
 
+    [LibraryImport("kernel32.dll")]
+    public static partial nint GetCurrentProcess();
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool SetProcessWorkingSetSize(nint hProcess, nint dwMinimumWorkingSetSize, nint dwMaximumWorkingSetSize);
+
+    [LibraryImport("kernel32.dll")]
+    public static partial uint GetCurrentThreadId();
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool AttachThreadInput(uint idAttach, uint idAttachTo, [MarshalAs(UnmanagedType.Bool)] bool fAttach);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool SetForegroundWindow(nint hWnd);
+
     public static unsafe string ClassNameOf(nint hWnd)
     {
         char* buf = stackalloc char[256];

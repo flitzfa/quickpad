@@ -16,6 +16,7 @@ public sealed class KeyboardHook : IDisposable
     readonly DoubleTapDetector _detector = new();
     readonly Native.HookProc _proc; // field keeps the delegate alive for the GC
     nint _hook;
+    long _lastLog = -10_000;
 
     public event Action<IntPtr>? DoubleCtrl;
 
@@ -46,7 +47,14 @@ public sealed class KeyboardHook : IDisposable
                 }
             }
         }
-        catch { /* never let an exception escape into the hook chain */ }
+        catch (Exception ex) // never let an exception escape into the hook chain
+        {
+            if (Environment.TickCount64 - _lastLog >= 10_000) // a fault here repeats on every key: one line per 10 s
+            {
+                _lastLog = Environment.TickCount64;
+                Log.Error(ex, "KeyboardHook");
+            }
+        }
         return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
     }
 
