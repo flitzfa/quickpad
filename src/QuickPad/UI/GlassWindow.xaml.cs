@@ -100,7 +100,7 @@ public partial class GlassWindow : Window
         FolderName.Text = Path.GetDirectoryName(path);
         try
         {
-            ShowSegments(PreviewFormatter.Format(TextFile.Open(path, TextFile.PreviewBytes).Text));
+            ShowSegments(PreviewFormatter.Format(TextFile.Open(path, TextFile.PreviewBytes, lenient: true).Text));
         }
         catch (NotTextException) { ShowNotice("Este archivo no es texto"); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { ShowNotice("No se pudo abrir el archivo"); }

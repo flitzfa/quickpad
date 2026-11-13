@@ -20,9 +20,14 @@ public static class TextFile
         return head[..Math.Min(head.Length, BinarySniffBytes)].Contains((byte)0);
     }
 
-    public static TextDocument Open(string path, int maxBytes = int.MaxValue)
+    /// <summary>Reads <paramref name="path"/> (at most <paramref name="maxBytes"/>). A BOM file with bytes invalid for
+    /// its encoding throws <see cref="DecoderFallbackException"/> (saving it would alter them), unless
+    /// <paramref name="lenient"/>, which shows them as U+FFFD for a read-only preview.</summary>
+    public static TextDocument Open(string path, int maxBytes = int.MaxValue, bool lenient = false)
     {
         using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        // Before the bytes: a write in between then leaves an older stamp, which Save detects.
+        var lastWriteUtc = File.GetLastWriteTimeUtc(fs.SafeFileHandle);
         long length = fs.Length;
         var buf = new byte[Math.Min(length, maxBytes)];
         fs.ReadExactly(buf);
@@ -32,9 +37,9 @@ public static class TextFile
 
         Encoding enc;
         int skip;
-        if (buf is [0xEF, 0xBB, 0xBF, ..]) { enc = new UTF8Encoding(true); skip = 3; }
-        else if (buf is [0xFF, 0xFE, ..]) { enc = new UnicodeEncoding(false, true); skip = 2; }
-        else if (buf is [0xFE, 0xFF, ..]) { enc = new UnicodeEncoding(true, true); skip = 2; }
+        if (buf is [0xEF, 0xBB, 0xBF, ..]) { enc = new UTF8Encoding(true, true); skip = 3; }
+        else if (buf is [0xFF, 0xFE, ..]) { enc = new UnicodeEncoding(false, true, true); skip = 2; }
+        else if (buf is [0xFE, 0xFF, ..]) { enc = new UnicodeEncoding(true, true, true); skip = 2; }
         else { enc = new UTF8Encoding(false); skip = 0; }
 
         var body = buf.AsSpan(skip);
@@ -54,9 +59,15 @@ public static class TextFile
             chars = new char[enc.GetMaxCharCount(body.Length)];
             n = enc.GetDecoder().GetChars(body, chars, flush: true);
         }
+        catch (DecoderFallbackException) when (lenient)
+        {
+            var replacing = (Encoding)enc.Clone(); // the document keeps the throwing instance
+            replacing.DecoderFallback = new DecoderReplacementFallback("�");
+            n = replacing.GetDecoder().GetChars(body, chars, flush: !truncated);
+        }
         var text = new string(chars, 0, n);
 
-        return new TextDocument(path, text, enc, DetectLineEnding(text), File.GetLastWriteTimeUtc(path), length, truncated);
+        return new TextDocument(path, text, enc, DetectLineEnding(text), lastWriteUtc, length, truncated);
     }
 
     public static TextDocument Save(TextDocument doc, string newText, bool force = false)

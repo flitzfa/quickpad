@@ -139,6 +139,7 @@ public partial class GlassWindow
             return true;
         }
         catch (NotTextException) { error = "Este archivo no es texto"; }
+        catch (DecoderFallbackException) { error = "El archivo tiene bytes inválidos para su codificación; editarlo lo alteraría."; }
         catch (OutOfMemoryException) { error = "El archivo es demasiado grande para editarlo."; } // > 2 GB, or no room
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { error = "No se pudo abrir el archivo"; }
         await Ask(error, "Aceptar");
