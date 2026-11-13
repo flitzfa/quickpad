@@ -195,6 +195,14 @@ public partial class GlassWindow
         Editor.Width = Editor.ActualWidth;
         Editor.Height = Editor.ActualHeight;
 
+        // On a resize frame the glass is already bigger than WPF's last drawing, so whatever WPF draws near the edges
+        // (the footer, the card's border, its tint) shows a frame late: doubled text and a two-tone edge. Those step
+        // aside while growing: the footer and the border vanish, the tint fades out, and they come back at the end.
+        Footer.BeginAnimation(OpacityProperty, null);
+        Footer.Opacity = 0;
+        Root.BorderBrush = Brushes.Transparent;
+        Root.Background = Fading("Glass.Background", 1, 0, 90);
+
         var toDevice = HwndSource.FromHwnd(_hwnd).CompositionTarget.TransformToDevice;
         var clock = System.Diagnostics.Stopwatch.StartNew();
         int frame = 0;
@@ -209,23 +217,48 @@ public partial class GlassWindow
             Native.SetWindowPos(_hwnd, 0, (int)Math.Round(r.X), (int)Math.Round(r.Y), (int)Math.Round(r.Width),
                                 (int)Math.Round(r.Height), Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
             (Left, Top, Width, Height) = (now.Left, now.Top, now.Width, now.Height);
-            if (t >= 1) StopGrow();
+            if (t < 1) return;
+            StopGrow();
+            Footer.Opacity = 0;
+            Footer.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(SettleMs)) { EasingFunction = Settle });
+            SolidColorBrush? tint = null;
+            // Back on the theme resource once faded in, so a light/dark switch still recolors the card.
+            tint = Fading("Glass.Background", 0, 1, SettleMs, () =>
+            {
+                if (Root.Background == tint) Root.SetResourceReference(Border.BackgroundProperty, "Glass.Background");
+            });
+            Root.Background = tint;
         };
         CompositionTarget.Rendering += _growTick;
     }
 
-    private const double GrowMs = 240;
+    private const double GrowMs = 240, SettleMs = 180;
+    private static readonly IEasingFunction Settle = new CubicEase { EasingMode = EasingMode.EaseOut };
     private EventHandler? _growTick;
 
     private static double Lerp(double a, double b, double k) => a + (b - a) * k;
 
-    /// <summary>Ends a running grow where it is and lets the editor stretch with the window again.</summary>
+    /// <summary>A copy of the theme brush <paramref name="key"/> whose opacity animates from → to.</summary>
+    private SolidColorBrush Fading(string key, double from, double to, double ms, Action? done = null)
+    {
+        var brush = ((SolidColorBrush)FindResource(key)).Clone();
+        var fade = new DoubleAnimation(from, to, TimeSpan.FromMilliseconds(ms)) { EasingFunction = Settle };
+        if (done is not null) fade.Completed += (_, _) => done();
+        brush.BeginAnimation(Brush.OpacityProperty, fade);
+        return brush;
+    }
+
+    /// <summary>Ends a running grow where it is: the editor stretches with the window again and the card's border,
+    /// tint and footer are back to normal at once (and stop any fade-in still running).</summary>
     private void StopGrow()
     {
-        if (_growTick is null) return;
-        CompositionTarget.Rendering -= _growTick;
+        if (_growTick is not null) CompositionTarget.Rendering -= _growTick;
         _growTick = null;
         Editor.Width = Editor.Height = double.NaN;
+        Root.SetResourceReference(Border.BorderBrushProperty, "Glass.Border");
+        Root.SetResourceReference(Border.BackgroundProperty, "Glass.Background");
+        Footer.BeginAnimation(OpacityProperty, null);
+        Footer.Opacity = 1;
     }
 
     /// <summary>Saves the editor text. True when it was written. On failure the text stays in the editor.</summary>
