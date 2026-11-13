@@ -121,4 +121,18 @@ public class TextFileSaveTests
         }
         finally { File.SetAttributes(p, FileAttributes.Normal); File.Delete(p); File.Delete(p + ".quickpad.tmp"); }
     }
+
+    [Fact]
+    public void Save_TruncatedDoc_Throws()
+    {
+        var p = Write(Bytes("0123456789"));
+        try
+        {
+            var doc = TextFile.Open(p, 4);
+            Assert.True(doc.Truncated);
+            Assert.Throws<InvalidOperationException>(() => TextFile.Save(doc, "x", force: true));
+            Assert.Equal(Bytes("0123456789"), File.ReadAllBytes(p));
+        }
+        finally { File.Delete(p); }
+    }
 }

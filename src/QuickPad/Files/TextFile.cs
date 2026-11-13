@@ -59,6 +59,7 @@ public static class TextFile
 
     public static TextDocument Save(TextDocument doc, string newText, bool force = false)
     {
+        if (doc.Truncated) throw new InvalidOperationException("Cannot save a truncated document");
         var path = doc.Path;
         var info = new FileInfo(path);
         if (!force && (!info.Exists || info.LastWriteTimeUtc != doc.LastWriteUtc || info.Length != doc.Length))
