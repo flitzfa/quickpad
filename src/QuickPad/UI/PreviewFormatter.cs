@@ -6,15 +6,8 @@ public sealed record Segment(string Text, bool IsKey);
 
 public static partial class PreviewFormatter
 {
-    private static readonly string[] SecretNames = { "KEY", "TOKEN", "SECRET", "PASSWORD", "PASS" };
-    private static readonly string[] KnownPrefixes = { "sk-", "ghp_", "gho_", "xoxb-", "xoxp-", "AKIA", "AIza" };
-
     [GeneratedRegex(@"^(\s*""(?<key>[^""]+)""\s*:\s*)(?<val>.*)$")]
     private static partial Regex JsonLine();
-
-    // \b: "task-manager" is not an sk- token.
-    [GeneratedRegex(@"\b(sk-|ghp_|gho_|xoxb-|xoxp-|AKIA|AIza)[A-Za-z0-9_\-]{6,}")]
-    private static partial Regex PrefixedToken();
 
     [GeneratedRegex(@"^(\s*(export\s+)?(?<key>[A-Za-z_][\w.-]*)\s*[=:]\s*)(?<val>.*)$")]
     private static partial Regex EnvLine();
@@ -33,28 +26,22 @@ public static partial class PreviewFormatter
 
     private static void AddLine(List<Segment> result, string line, int maxChars)
     {
-        var m = JsonLine();
-        var match = m.Match(line);
+        var match = JsonLine().Match(line);
         if (!match.Success) match = EnvLine().Match(line);
 
         var parts = new List<Segment>();
         if (match.Success)
         {
             var key = match.Groups["key"];
-            var val = match.Groups["val"];
             if (key.Index > 0) parts.Add(new Segment(line[..key.Index], false));
             parts.Add(new Segment(key.Value, true));
-            var value = IsSecret(key.Value, val.Value) ? MaskValue(val.Value) : val.Value;
-            parts.Add(new Segment(line[(key.Index + key.Length)..val.Index] + value, false));
+            parts.Add(new Segment(line[(key.Index + key.Length)..], false));
         }
         else parts.Add(new Segment(line, false));
-        // Tokens anywhere else: minified JSON, YAML list items, prose.
-        parts = parts.Select(p => p.IsKey ? p : p with { Text = PrefixedToken().Replace(p.Text, t => Mask(t.Value)) }).ToList();
 
-        int left = maxChars;
-        if (parts.Sum(p => p.Text.Length) > maxChars)
+        if (line.Length > maxChars)
         {
-            left = maxChars - 1;
+            int left = maxChars - 1;
             foreach (var p in parts)
             {
                 if (left <= 0) break;
@@ -66,41 +53,5 @@ public static partial class PreviewFormatter
             return;
         }
         result.AddRange(parts.Where(p => p.Text.Length > 0));
-    }
-
-    private static string Unwrap(string value, out string open, out string close)
-    {
-        var v = value.TrimEnd();
-        close = "";
-        open = "";
-        if (v.EndsWith(',')) { close = ","; v = v[..^1]; }
-        if (v.Length >= 2 && (v[0] == '"' || v[0] == '\'') && v[^1] == v[0])
-        {
-            open = v[0].ToString();
-            close = open + close;
-            v = v[1..^1];
-        }
-        return v;
-    }
-
-    private static bool IsSecret(string key, string value)
-    {
-        if (SecretNames.Any(n => key.Contains(n, StringComparison.OrdinalIgnoreCase))) return true;
-        var v = Unwrap(value, out _, out _);
-        return KnownPrefixes.Any(p => v.StartsWith(p, StringComparison.Ordinal));
-    }
-
-    private static string MaskValue(string value)
-    {
-        var v = Unwrap(value, out var open, out var close);
-        return v.Length == 0 ? value : open + Mask(v) + close;
-    }
-
-    /// <summary>Keeps the edges only where they give nothing away: a known prefix, or a value long enough (16+).</summary>
-    public static string Mask(string value)
-    {
-        var prefix = KnownPrefixes.FirstOrDefault(p => value.StartsWith(p, StringComparison.Ordinal));
-        if (value.Length <= 8 || (prefix is null && value.Length < 16)) return "••••••••";
-        return (prefix ?? value[..3]) + "••••" + value[^4..];
     }
 }

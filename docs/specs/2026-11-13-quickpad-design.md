@@ -33,7 +33,7 @@ Pestañas, resaltado de sintaxis completo, plugins, configuración avanzada, arc
 
 **Doble Ctrl:** dos pulsaciones de Ctrl **solo**, con menos de 350 ms entre ellas, sin otra tecla en el medio y únicamente cuando la ventana activa es el Explorador (`CabinetWClass`). Mantener Ctrl apretado no cuenta como toque. Ctrl+C, Ctrl+clic y los demás atajos siguen funcionando como siempre.
 
-**Tapado de secretos:** en vista previa, los valores que parecen secretos se muestran tapados (`sk-••••3f9a`). Se consideran secretos los valores de claves cuyo nombre contiene `KEY`, `TOKEN`, `SECRET`, `PASSWORD` o `PASS`, y los valores con prefijos conocidos (`sk-`, `ghp_`, `xoxb-`, `AKIA`, etc.). En modo edición se ve el texto completo.
+**Sin tapado de secretos:** la vista previa muestra los valores tal cual, incluidas claves y tokens, para poder ver qué hay y decidir si editar. (Decisión del usuario del 2026-11-13; reemplaza el tapado original.)
 
 **Archivos aceptados:** cualquier archivo que sea texto (`.txt`, `.env`, `.json`, `.ini`, `.cfg`, `.yaml`, `.md`, `.log`, `.conf`, …). Si el archivo es binario, se muestra el aviso "Este archivo no es texto" y no se abre.
 
@@ -61,7 +61,7 @@ src/QuickPad/
     TextFile           — detección de texto/binario, codificación, saltos de línea, lectura y guardado seguro
   UI/
     GlassWindow        — ventana única reutilizada; vidrio, tema y animaciones
-    SecretMasker       — tapado de secretos (lógica pura)
+    PreviewFormatter   — vista previa: claves en color y corte de líneas (lógica pura)
 tests/QuickPad.Tests   — xUnit
 ```
 
@@ -96,7 +96,7 @@ tests/QuickPad.Tests   — xUnit
 **Automáticas (xUnit):**
 - `DoubleTapDetector`: dos toques dentro del tiempo → sí; fuera del tiempo → no; otra tecla en el medio → no; Ctrl mantenido apretado → no; tres toques → un solo disparo.
 - `TextFile`: detección de binario; UTF-8 con y sin BOM, UTF-16 y ANSI; un ida y vuelta (leer y guardar) que conserva los bytes de la codificación y los saltos de línea; el guardado seguro no deja temporales; detección de cambios externos.
-- `SecretMasker`: claves con nombres sensibles, prefijos conocidos y líneas que no se tocan.
+- `PreviewFormatter`: claves en color, valores que parecen secretos mostrados tal cual, corte a 40 líneas y 200 caracteres.
 
 **Manuales:** apariencia en tema claro y oscuro, animaciones, Explorador con varias pestañas, selección múltiple y medición de tiempo de apertura y de RAM.
 
