@@ -83,8 +83,8 @@ public partial class App : Application
 
     async void OnDoubleCtrl(IntPtr explorer)
     {
-        var clock = Stopwatch.StartNew(); // the hook runs on this thread: queueing to here costs ~nothing
-        var hit = ExplorerSelection.Get(explorer);
+        var clock = Stopwatch.StartNew(); // from the hand-off by the hook thread, which is ~immediate on an idle UI thread
+        var hit = await ExplorerSelection.GetAsync(explorer);
         long getMs = clock.ElapsedMilliseconds;
         if (hit is null) return;
 
@@ -98,7 +98,7 @@ public partial class App : Application
         firstFrame = (_, _) =>
         {
             CompositionTarget.Rendering -= firstFrame;
-            Log.Info($"double Ctrl -> first frame {clock.ElapsedMilliseconds} ms (ExplorerSelection.Get {getMs} ms)");
+            Log.Info($"double Ctrl -> first frame {clock.ElapsedMilliseconds} ms (ExplorerSelection.GetAsync {getMs} ms)");
         };
         CompositionTarget.Rendering += firstFrame;
         await _window.ShowPreview(hit.Path, hit.ItemBounds);

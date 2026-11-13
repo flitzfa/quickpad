@@ -16,33 +16,38 @@ public static class ExplorerSelection
         new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem));
 
     /// <summary>The first selected file in the active tab of the given Explorer window; null if nothing is
-    /// selected, the selection is a folder, or anything fails. Never throws. Synchronous; safe on an STA thread.</summary>
-    public static ExplorerHit? Get(IntPtr explorerHwnd)
+    /// selected, the selection is a folder, or anything fails. Never throws. Call it on the UI (STA) thread:
+    /// the Shell path lookup runs there while the item bounds are looked up on the thread pool, given up after
+    /// 250 ms (the window then opens next to the cursor).</summary>
+    public static async Task<ExplorerHit?> GetAsync(IntPtr explorerHwnd)
     {
         try
         {
             nint tab = Native.FindWindowEx(explorerHwnd, 0, "ShellTabWindowClass", null); // first in Z order = active tab
             if (tab == 0) return null;
+            var bounds = Task.Run(() => SelectedItemBounds(tab));
             string? path = SelectedFilePath(explorerHwnd, tab);
-            return path is null ? null : new ExplorerHit(path, SelectedItemBounds(tab));
+            if (path is null) return null;
+            return new ExplorerHit(path, await Task.WhenAny(bounds, Task.Delay(250)) == bounds ? bounds.Result : null);
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "ExplorerSelection.Get");
+            Log.Error(ex, "ExplorerSelection.GetAsync");
             return null;
         }
     }
 
-    /// <summary>Pays the one-time cost of the first <see cref="Get"/> (late-bound Shell COM calls, UI Automation)
-    /// ahead of time. Shows nothing and never throws.</summary>
+    /// <summary>Pays the one-time cost of the first <see cref="GetAsync"/> ahead of time: the late-bound Shell COM
+    /// calls here, UI Automation on the thread pool where it will run. Shows nothing and never throws.</summary>
     public static void Warm()
     {
-        try
-        {
-            SelectedFilePath(0, 0); // walks Shell.Windows() through the same late-bound calls; matches no window
-            AutomationElement.RootElement.FindFirst(TreeScope.Children, SelectedListItem);
-        }
+        try { SelectedFilePath(0, 0); } // walks Shell.Windows() through the same late-bound calls; matches no window
         catch (Exception ex) { Log.Error(ex, "ExplorerSelection.Warm"); }
+        _ = Task.Run(() =>
+        {
+            try { FindSelected(AutomationElement.RootElement, TreeScope.Children); }
+            catch (Exception ex) { Log.Error(ex, "ExplorerSelection.Warm UIA"); }
+        });
     }
 
     static string? SelectedFilePath(nint explorerHwnd, nint tab)
@@ -112,16 +117,36 @@ public static class ExplorerSelection
     {
         try
         {
-            var selected = AutomationElement.FromHandle(tab).FindFirst(TreeScope.Descendants, SelectedListItem);
-            if (selected is null) return null;
-            Rect r = selected.Current.BoundingRectangle;
-            return r.IsEmpty || !double.IsFinite(r.X + r.Y + r.Width + r.Height) ? null : r;
+            nint view = FindDescendant(tab, "SHELLDLL_DefView"); // the items view: a much smaller tree than the tab
+            Rect? r = FindSelected(AutomationElement.FromHandle(view != 0 ? view : tab), TreeScope.Descendants);
+            return r is { } b && !b.IsEmpty && double.IsFinite(b.X + b.Y + b.Width + b.Height) ? b : null;
         }
         catch (Exception ex)
         {
             Log.Error(ex, "ExplorerSelection bounds");
             return null;
         }
+    }
+
+    /// <summary>Bounds of the first selected list item under <paramref name="root"/>, fetched in the same
+    /// cross-process call as the search.</summary>
+    static Rect? FindSelected(AutomationElement root, TreeScope scope)
+    {
+        var cache = new CacheRequest { AutomationElementMode = AutomationElementMode.None };
+        cache.Add(AutomationElement.BoundingRectangleProperty);
+        using (cache.Activate())
+            return root.FindFirst(scope, SelectedListItem)?.Cached.BoundingRectangle;
+    }
+
+    static nint FindDescendant(nint parent, string className)
+    {
+        for (nint child = Native.FindWindowEx(parent, 0, null, null); child != 0; child = Native.FindWindowEx(parent, child, null, null))
+        {
+            if (Native.ClassNameOf(child) == className) return child;
+            nint found = FindDescendant(child, className);
+            if (found != 0) return found;
+        }
+        return 0;
     }
 
     static void Release(object? o)
