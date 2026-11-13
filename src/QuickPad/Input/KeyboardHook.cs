@@ -56,10 +56,11 @@ public sealed class KeyboardHook : IDisposable
                 if ((k.flags & LLKHF_INJECTED) == 0 && msg is WM_KEYDOWN or WM_KEYUP or WM_SYSKEYDOWN or WM_SYSKEYUP)
                 {
                     var fg = Native.GetForegroundWindow();
-                    if (fg == 0 || Native.ClassNameOf(fg) != "CabinetWClass")
+                    nint explorer = ExplorerFor(fg);
+                    if (explorer == 0)
                         _detector.Reset();
                     else if (_detector.OnKey((int)k.vkCode, msg is WM_KEYDOWN or WM_SYSKEYDOWN, k.time) && !IsRenaming(fg))
-                        _dispatcher.BeginInvoke(() => DoubleCtrl?.Invoke(fg));
+                        _dispatcher.BeginInvoke(() => DoubleCtrl?.Invoke(explorer));
                 }
             }
         }
@@ -72,6 +73,18 @@ public sealed class KeyboardHook : IDisposable
             }
         }
         return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
+    }
+
+    /// <summary>The Explorer window a double Ctrl is meant for: the foreground one, or, while QuickPad itself is in
+    /// front (its preview is open), the one under the pointer, so hovering another file and double Ctrl switches to it.</summary>
+    static nint ExplorerFor(nint fg)
+    {
+        if (fg == 0) return 0;
+        if (Native.ClassNameOf(fg) == "CabinetWClass") return fg;
+        Native.GetWindowThreadProcessId(fg, out uint pid);
+        if (pid != Environment.ProcessId || !Native.GetCursorPos(out var p)) return 0;
+        nint root = Native.GetAncestor(Native.WindowFromPoint(p), Native.GA_ROOT);
+        return root != 0 && Native.ClassNameOf(root) == "CabinetWClass" ? root : 0;
     }
 
     static bool IsRenaming(nint fg)

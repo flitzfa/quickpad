@@ -104,6 +104,11 @@ internal static partial class Native
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool IsChild(nint hWndParent, nint hWnd);
 
+    public const uint GA_ROOT = 2;
+
+    [LibraryImport("user32.dll")]
+    public static partial nint GetAncestor(nint hwnd, uint gaFlags);
+
     /// <summary>INPUT with a MOUSEINPUT union: type at 0, the pointer-aligned union at 8 (40 bytes on 64-bit).</summary>
     [StructLayout(LayoutKind.Explicit, Size = 40)]
     public struct MOUSE_INPUT { [FieldOffset(0)] public uint type; }

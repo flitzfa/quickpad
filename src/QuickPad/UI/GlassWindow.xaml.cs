@@ -114,6 +114,9 @@ public partial class GlassWindow : Window
         Root.RenderTransformOrigin = origin;
         Show();
         BringForward();
+        // WPF restores focus to the last focused element; after an edit that is the now hidden editor, which leaves
+        // no element focused and keys (Esc) unheard until a click.
+        if (!IsKeyboardFocusWithin) Focus();
         Animate(1, 1, 250, new BackEase { Amplitude = 0.3, EasingMode = EasingMode.EaseOut }, fromStart: !wasVisible);
     }
 
