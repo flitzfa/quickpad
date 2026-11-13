@@ -51,6 +51,27 @@ internal static partial class Native
     [LibraryImport("kernel32.dll", EntryPoint = "GetModuleHandleW", StringMarshalling = StringMarshalling.Utf16)]
     public static partial nint GetModuleHandle(string? lpModuleName);
 
+    public const int GWL_STYLE = -16;
+    public const nint WS_SYSMENU = 0x00080000;
+
+    [LibraryImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
+    public static partial nint GetWindowLongPtr(nint hWnd, int nIndex);
+
+    [LibraryImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
+    public static partial nint SetWindowLongPtr(nint hWnd, int nIndex, nint dwNewLong);
+
+    public const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+    public const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
+    public const int DWMWA_SYSTEMBACKDROP_TYPE = 38;
+    public const int DWMWCP_ROUND = 2;
+    public const int DWMSBT_TRANSIENTWINDOW = 3; // Acrylic
+
+    [LibraryImport("dwmapi.dll")]
+    public static partial int DwmSetWindowAttribute(nint hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
+
+    public static int DwmSetWindowAttribute(nint hwnd, int attribute, int value) =>
+        DwmSetWindowAttribute(hwnd, attribute, ref value, sizeof(int));
+
     public static unsafe string ClassNameOf(nint hWnd)
     {
         char* buf = stackalloc char[256];
