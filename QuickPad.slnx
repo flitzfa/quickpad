@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/QuickPad/QuickPad.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/QuickPad.Tests/QuickPad.Tests.csproj" />
+  </Folder>
+</Solution>
