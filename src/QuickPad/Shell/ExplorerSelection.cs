@@ -15,9 +15,16 @@ public static class ExplorerSelection
         new PropertyCondition(SelectionItemPattern.IsSelectedProperty, true),
         new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem));
 
-    /// <summary>The first selected file in the active tab of the given Explorer window; null if nothing is
-    /// selected, the selection is a folder, or anything fails. Never throws. Call it on the UI (STA) thread:
-    /// the Shell path lookup runs there while the item bounds are looked up on the thread pool, given up after
+    const int UiaTimeoutMs = 250;
+    // shortcut: with extensions hidden, a hovered name is matched by scanning the folder; past this many items the
+    // hover is ignored and the selection is used. Raise it if huge folders matter.
+    const int MaxScan = 1000;
+
+    sealed record Hover(string Name, Rect Bounds);
+
+    /// <summary>The file under the mouse in the active tab of the given Explorer window, or else its first selected
+    /// file; null if that is a folder, nothing applies, or anything fails. Never throws. Call it on the UI (STA)
+    /// thread: the Shell path lookups run there while UI Automation runs on the thread pool, given up after
     /// 250 ms (the window then opens next to the cursor).</summary>
     public static async Task<ExplorerHit?> GetAsync(IntPtr explorerHwnd)
     {
@@ -25,10 +32,20 @@ public static class ExplorerSelection
         {
             nint tab = Native.FindWindowEx(explorerHwnd, 0, "ShellTabWindowClass", null); // first in Z order = active tab
             if (tab == 0) return null;
-            var bounds = Task.Run(() => SelectedItemBounds(tab));
-            string? path = SelectedFilePath(explorerHwnd, tab);
+            nint view = FindDescendant(tab, "SHELLDLL_DefView"); // the items view: a much smaller tree than the tab
+            var hover = Task.Run(() => HoveredItem(view));
+            var bounds = Task.Run(() => SelectedItemBounds(view != 0 ? view : tab));
+
+            if ((await Task.WhenAny(hover, Task.Delay(UiaTimeoutMs)) == hover ? hover.Result : null) is { } h)
+            {
+                (string? hovered, bool isFolder) = FromWindow<(string?, bool)>(explorerHwnd, tab, w => HoveredFilePathOf(w, h.Name));
+                if (isFolder) return null;
+                if (hovered is not null) return new ExplorerHit(hovered, h.Bounds);
+            }
+
+            string? path = FromWindow(explorerHwnd, tab, SelectedFilePathOf);
             if (path is null) return null;
-            return new ExplorerHit(path, await Task.WhenAny(bounds, Task.Delay(250)) == bounds ? bounds.Result : null);
+            return new ExplorerHit(path, await Task.WhenAny(bounds, Task.Delay(UiaTimeoutMs)) == bounds ? bounds.Result : null);
         }
         catch (Exception ex)
         {
@@ -49,7 +66,7 @@ public static class ExplorerSelection
         await uia;
     }
 
-    static void WarmShell() => Try(() => SelectedFilePath(0, 0), "Warm"); // walks Shell.Windows(); matches no window
+    static void WarmShell() => Try(() => FromWindow(0, 0, SelectedFilePathOf), "Warm"); // walks Shell.Windows(); matches no window
 
     static void Try(Action action, string context)
     {
@@ -57,7 +74,8 @@ public static class ExplorerSelection
         catch (Exception ex) { Log.Error(ex, "ExplorerSelection." + context); }
     }
 
-    static string? SelectedFilePath(nint explorerHwnd, nint tab)
+    /// <summary>Runs <paramref name="pick"/> on the Shell window of the given Explorer tab; default if there is none.</summary>
+    static T? FromWindow<T>(nint explorerHwnd, nint tab, Func<dynamic, T?> pick)
     {
         var shellType = Type.GetTypeFromProgID("Shell.Application", throwOnError: true)!;
         dynamic shell = Activator.CreateInstance(shellType)!;
@@ -73,7 +91,7 @@ public static class ExplorerSelection
                 {
                     w = windows.Item(i);
                     if (w is null || (nint)Convert.ToInt64(w.HWND) != explorerHwnd || TabOf(w) != tab) continue;
-                    return SelectedFilePathOf(w);
+                    return pick(w);
                 }
                 catch (COMException ex)
                 {
@@ -81,7 +99,7 @@ public static class ExplorerSelection
                 }
                 finally { Release(w); }
             }
-            return null;
+            return default;
         }
         finally
         {
@@ -120,13 +138,84 @@ public static class ExplorerSelection
         }
     }
 
-    static Rect? SelectedItemBounds(nint tab)
+    /// <summary>The hovered item's path, or that it is a folder; (null, false) when the name can't be pinned to one item.</summary>
+    static (string? Path, bool IsFolder) HoveredFilePathOf(dynamic window, string name)
+    {
+        dynamic? doc = null, folder = null, item = null, items = null;
+        try
+        {
+            doc = window.Document;
+            folder = doc?.Folder;
+            if (folder is null) return default;
+            if (!ExtensionsHidden())
+            {
+                item = folder.ParseName(name); // the shown name is the file name
+                if (item is not null) return item.IsFolder ? (null, true) : ((string)item.Path, false);
+            }
+            items = folder.Items();
+            int count = items.Count;
+            if (count > MaxScan) return default;
+            var all = new List<(string Name, string Path, bool IsFolder)>(count);
+            for (int i = 0; i < count; i++)
+            {
+                dynamic? it = items.Item(i);
+                try { if (it is not null) all.Add(((string)it.Name, (string)it.Path, (bool)it.IsFolder)); }
+                finally { Release(it); }
+            }
+            string? path = MatchByName(name, all, out bool isFolder);
+            return (path, isFolder);
+        }
+        finally
+        {
+            Release(item);
+            Release(items);
+            Release(folder);
+            Release(doc);
+        }
+    }
+
+    /// <summary>The path of the only item shown as <paramref name="name"/> if it is a file, with
+    /// <paramref name="isFolder"/> set when it is a folder; null when no item or more than one shows that name
+    /// (e.g. config.env and config.txt with extensions hidden): then nothing is guessed.</summary>
+    public static string? MatchByName(string name, IEnumerable<(string Name, string Path, bool IsFolder)> items, out bool isFolder)
+    {
+        var matches = items.Where(i => i.Name == name).Take(2).ToList();
+        isFolder = matches.Count == 1 && matches[0].IsFolder;
+        return matches.Count == 1 && !isFolder ? matches[0].Path : null;
+    }
+
+    static bool ExtensionsHidden()
+    {
+        using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced");
+        return key?.GetValue("HideFileExt") is not int v || v != 0; // Windows' default is hidden
+    }
+
+    /// <summary>The list item under the mouse, if the mouse is over the given items view; null otherwise.</summary>
+    static Hover? HoveredItem(nint view)
     {
         try
         {
-            nint view = FindDescendant(tab, "SHELLDLL_DefView"); // the items view: a much smaller tree than the tab
-            Rect? r = FindSelected(AutomationElement.FromHandle(view != 0 ? view : tab), TreeScope.Descendants);
-            return r is { } b && !b.IsEmpty && double.IsFinite(b.X + b.Y + b.Width + b.Height) ? b : null;
+            if (view == 0 || !Native.GetCursorPos(out var p)) return null;
+            nint under = Native.WindowFromPoint(p);
+            if (under != view && !Native.IsChild(view, under)) return null; // over the tree, address bar, another window…
+            var e = AutomationElement.FromPoint(new Point(p.x, p.y));
+            for (int depth = 0; e is not null && depth < 4; depth++, e = TreeWalker.ControlViewWalker.GetParent(e))
+                if (e.Current.ControlType == ControlType.ListItem)
+                    return Valid(e.Current.BoundingRectangle) is { } b ? new Hover(e.Current.Name, b) : null;
+            return null; // empty space in the view
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "ExplorerSelection hover");
+            return null;
+        }
+    }
+
+    static Rect? SelectedItemBounds(nint root)
+    {
+        try
+        {
+            return Valid(FindSelected(AutomationElement.FromHandle(root), TreeScope.Descendants));
         }
         catch (Exception ex)
         {
@@ -134,6 +223,8 @@ public static class ExplorerSelection
             return null;
         }
     }
+
+    static Rect? Valid(Rect? r) => r is { } b && !b.IsEmpty && double.IsFinite(b.X + b.Y + b.Width + b.Height) ? b : null;
 
     /// <summary>Bounds of the first selected list item under <paramref name="root"/>, fetched in the same
     /// cross-process call as the search.</summary>

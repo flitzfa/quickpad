@@ -1,6 +1,6 @@
 # QuickPad
 
-Editor de texto para Windows 11 que vive en la bandeja. Con doble Ctrl sobre un archivo seleccionado en el Explorador se abre una vista previa de vidrio al lado del archivo; un clic y ya lo editás.
+Editor de texto para Windows 11 que vive en la bandeja. Con doble Ctrl sobre un archivo del Explorador (con el mouse encima o seleccionado) se abre una vista previa de vidrio al lado del archivo; un clic y ya lo editás.
 
 ## Requisitos
 
@@ -17,7 +17,7 @@ Genera `publish\QuickPad.exe`. Ejecutalo una vez: queda en la bandeja.
 
 ## Uso
 
-- Seleccioná un archivo en el Explorador y apretá **Ctrl dos veces** (menos de 350 ms entre toques): se abre la vista previa (primeras 40 líneas).
+- Poné el mouse sobre un archivo en el Explorador y apretá **Ctrl dos veces** (menos de 350 ms entre toques): se abre la vista previa (primeras 40 líneas). Si el mouse no está sobre un archivo de la lista, se usa el archivo seleccionado; sobre una carpeta no pasa nada.
 - **Clic** en la vista previa para editar. **Ctrl+S** guarda, **Ctrl+F** busca, **Esc** cierra.
 - Guardar conserva la codificación y los saltos de línea originales.
 - Menú de la bandeja: **Iniciar con Windows** (activa/desactiva el arranque automático) y **Salir**.

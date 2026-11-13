@@ -90,6 +90,20 @@ internal static partial class Native
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool SetForegroundWindow(nint hWnd);
 
+    [StructLayout(LayoutKind.Sequential)]
+    public struct POINT { public int x, y; }
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool GetCursorPos(out POINT lpPoint);
+
+    [LibraryImport("user32.dll")]
+    public static partial nint WindowFromPoint(POINT point);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool IsChild(nint hWndParent, nint hWnd);
+
     /// <summary>INPUT with a MOUSEINPUT union: type at 0, the pointer-aligned union at 8 (40 bytes on 64-bit).</summary>
     [StructLayout(LayoutKind.Explicit, Size = 40)]
     public struct MOUSE_INPUT { [FieldOffset(0)] public uint type; }

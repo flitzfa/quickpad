@@ -33,6 +33,8 @@ Pestañas, resaltado de sintaxis completo, plugins, configuración avanzada, arc
 
 **Doble Ctrl:** dos pulsaciones de Ctrl **solo**, con menos de 350 ms entre ellas, sin otra tecla en el medio y únicamente cuando la ventana activa es el Explorador (`CabinetWClass`). Mantener Ctrl apretado no cuenta como toque. Ctrl+C, Ctrl+clic y los demás atajos siguen funcionando como siempre.
 
+**Archivo bajo el mouse:** el doble Ctrl usa el archivo que está bajo el puntero en la lista del Explorador; si el puntero no está sobre un archivo, usa el seleccionado; sobre una carpeta no hace nada. Si el nombre visible coincide con más de un archivo (extensiones ocultas), usa el seleccionado. (Agregado el 2026-11-13.)
+
 **Sin tapado de secretos:** la vista previa muestra los valores tal cual, incluidas claves y tokens, para poder ver qué hay y decidir si editar. (Decisión del usuario del 2026-11-13; reemplaza el tapado original.)
 
 **Archivos aceptados:** cualquier archivo que sea texto (`.txt`, `.env`, `.json`, `.ini`, `.cfg`, `.yaml`, `.md`, `.log`, `.conf`, …). Si el archivo es binario, se muestra el aviso "Este archivo no es texto" y no se abre.
