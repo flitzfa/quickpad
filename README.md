@@ -2,6 +2,10 @@
 
 Editor de texto para Windows 11 que vive en la bandeja del sistema. Poné el mouse sobre un archivo en el Explorador, apretá **Ctrl dos veces** y se abre una vista previa al lado del archivo; un clic y ya lo estás editando. Pensado para tocar rápido un `.env`, una API key o un `.json` sin esperar a que abra un editor pesado.
 
+
+https://github.com/user-attachments/assets/5535264f-1e9c-42a9-a8a2-deff7d4821ef
+
+
 ## Descargar
 
 1. Bajá **`QuickPad.exe`** de la [última versión](https://github.com/flitzfa/quickpad/releases/latest).
