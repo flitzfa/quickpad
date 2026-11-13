@@ -116,10 +116,15 @@ public partial class GlassWindow
     {
         if (_doc is not null || CurrentPath is not { } path || PreviewText.Visibility != Visibility.Visible) return;
         if (!await OpenIntoEditorAsync(path)) return;
+        if (grow)
+        {
+            await FadeOutAsync(); // the preview leaves before anything changes under it
+            if (_hiding || CurrentPath != path || _doc is null) return; // closed or switched meanwhile
+        }
         PreviewText.Visibility = Visibility.Collapsed;
         Editor.Visibility = Visibility.Visible;
         Footer.Text = EditFooter;
-        if (grow) Grow();
+        if (grow) PopToEditSize();
         Editor.Focus();
         Editor.UpdateLayout();
         int caret = click is { } p ? Editor.GetCharacterIndexFromPoint(p, snapToText: true) : 0;
@@ -164,7 +169,7 @@ public partial class GlassWindow
     private void ResetEditor()
     {
         Dialog.Dismiss();
-        StopGrow();
+        AnimateBody(1, 1, 0, new CubicEase()); // a pop cut short by a close must not leave the next preview faded
         _doc = null;
         _savedText = "";
         Editor.IsReadOnly = false;
@@ -173,59 +178,47 @@ public partial class GlassWindow
         CloseSearch();
     }
 
-    /// <summary>Grows the window to at least the edit size in <see cref="GrowMs"/> (a long preview is already
-    /// taller), kept inside the work area of its monitor.
-    /// Size and position move together in one SetWindowPos (two WPF properties resized twice, jumping), on every
-    /// other frame: WPF drops the frame it is drawing when its window is resized, so resizing every frame drew
-    /// nothing until the end (bare glass, then a jump). A window region can't help: DWM paints the acrylic over the
-    /// whole window regardless. The editor is laid out at its final size first, so it doesn't reflow meanwhile.</summary>
-    private void Grow()
+    /// <summary>Shrinks the card's content a little and fades it out (~90 ms; the card's tint stays), then waits
+    /// for that empty card to be on screen. Gives up waiting if the window starts closing, so the caller never hangs.</summary>
+    private async Task FadeOutAsync()
     {
-        StopGrow();
-        var workArea = WorkArea(System.Windows.Forms.Screen.FromHandle(_hwnd));
-        var from = new Rect(Left, Top, ActualWidth, ActualHeight);
-        double width = Math.Min(Math.Max(from.Width, EditWidth), workArea.Width - 2 * Gap);
-        double height = Math.Min(Math.Max(from.Height, EditHeight), workArea.Height - 2 * Gap);
-        var to = new Rect(Math.Clamp(from.Left, workArea.Left, workArea.Right - width),
-                          Math.Clamp(from.Top, workArea.Top, workArea.Bottom - height), width, height);
-
-        // The editor gets its final size up front, so it doesn't reflow (or flash scrollbars) while uncovered.
-        Root.Measure(to.Size);
-        Root.Arrange(new Rect(to.Size));
-        Editor.Width = Editor.ActualWidth;
-        Editor.Height = Editor.ActualHeight;
-
-        var toDevice = HwndSource.FromHwnd(_hwnd).CompositionTarget.TransformToDevice;
-        var clock = System.Diagnostics.Stopwatch.StartNew();
-        int frame = 0;
-        _growTick = (_, _) =>
-        {
-            if (frame++ % 2 == 1) return; // a frame without a resize, which WPF gets to draw
-            double t = Math.Min(clock.Elapsed.TotalMilliseconds / GrowMs, 1);
-            double k = 1 - Math.Pow(1 - t, 3); // ease-out cubic
-            var now = new Rect(Lerp(from.Left, to.Left, k), Lerp(from.Top, to.Top, k),
-                               Lerp(from.Width, to.Width, k), Lerp(from.Height, to.Height, k));
-            var r = Rect.Transform(now, toDevice);
-            Native.SetWindowPos(_hwnd, 0, (int)Math.Round(r.X), (int)Math.Round(r.Y), (int)Math.Round(r.Width),
-                                (int)Math.Round(r.Height), Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
-            (Left, Top, Width, Height) = (now.Left, now.Top, now.Width, now.Height);
-            if (t >= 1) StopGrow();
-        };
-        CompositionTarget.Rendering += _growTick;
+        var done = new TaskCompletionSource();
+        AnimateBody(0.96, 0, 90, new CubicEase { EasingMode = EasingMode.EaseOut }, completed: (_, _) => done.TrySetResult());
+        await Task.WhenAny(done.Task, Task.Delay(250));
+        await Task.Delay(40); // a couple more frames: the last frame WPF drew before the resize is what shows during it
     }
 
-    private const double GrowMs = 240;
-    private EventHandler? _growTick;
-
-    private static double Lerp(double a, double b, double k) => a + (b - a) * k;
-
-    /// <summary>Ends a running grow where it is and lets the editor stretch with the window again.</summary>
-    private void StopGrow()
+    /// <summary>Scales and fades the card's content; the fade may take its own duration and curve.</summary>
+    private void AnimateBody(double toScale, double toOpacity, int ms, IEasingFunction ease, double? fromScale = null,
+                             double? fromOpacity = null, EventHandler? completed = null, int? fadeMs = null, IEasingFunction? fadeEase = null)
     {
-        if (_growTick is null) return;
-        CompositionTarget.Rendering -= _growTick;
-        _growTick = null;
-        Editor.Width = Editor.Height = double.NaN;
+        var scale = new DoubleAnimation(toScale, TimeSpan.FromMilliseconds(ms)) { From = fromScale, EasingFunction = ease };
+        var fade = new DoubleAnimation(toOpacity, TimeSpan.FromMilliseconds(fadeMs ?? ms)) { From = fromOpacity, EasingFunction = fadeEase ?? ease };
+        if (completed is not null) fade.Completed += completed;
+        BodyScale.BeginAnimation(ScaleTransform.ScaleXProperty, scale);
+        BodyScale.BeginAnimation(ScaleTransform.ScaleYProperty, scale);
+        Body.BeginAnimation(OpacityProperty, fade);
+    }
+
+    /// <summary>Jumps the window to at least the edit size (a long preview is already taller), kept inside the work
+    /// area of its monitor, while the card's content is invisible, then brings the content back with the open
+    /// spring from the top-left corner. A continuous grow can't be smooth here: WPF drops the frame it is drawing on
+    /// every resize, and DWM paints the acrylic over the whole window, so content and glass never stay in step.</summary>
+    private void PopToEditSize()
+    {
+        var workArea = WorkArea(System.Windows.Forms.Screen.FromHandle(_hwnd));
+        double width = Math.Min(Math.Max(ActualWidth, EditWidth), workArea.Width - 2 * Gap);
+        double height = Math.Min(Math.Max(ActualHeight, EditHeight), workArea.Height - 2 * Gap);
+        var to = new Rect(Math.Clamp(Left, workArea.Left, workArea.Right - width),
+                          Math.Clamp(Top, workArea.Top, workArea.Bottom - height), width, height);
+        // One SetWindowPos for size and position (WPF's four properties would resize in steps), then WPF's own
+        // record of the bounds, which its layout follows; the window already has them.
+        var px = Rect.Transform(to, HwndSource.FromHwnd(_hwnd).CompositionTarget.TransformToDevice);
+        Native.SetWindowPos(_hwnd, 0, (int)Math.Round(px.X), (int)Math.Round(px.Y), (int)Math.Round(px.Width),
+                            (int)Math.Round(px.Height), Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
+        (Left, Top, Width, Height) = (to.Left, to.Top, to.Width, to.Height);
+        AnimateBody(1, 1, 260, new BackEase { Amplitude = 0.3, EasingMode = EasingMode.EaseOut }, fromScale: 0.94, fromOpacity: 0,
+                    fadeMs: 150, fadeEase: new CubicEase { EasingMode = EasingMode.EaseOut });
     }
 
     /// <summary>Saves the editor text. True when it was written. On failure the text stays in the editor.</summary>

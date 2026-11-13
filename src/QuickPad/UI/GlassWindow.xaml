@@ -72,7 +72,11 @@
         <Border.RenderTransform>
             <ScaleTransform x:Name="RootScale" />
         </Border.RenderTransform>
-        <Grid>
+        <!-- Body: everything on the card but the card itself, so it can pop while the tint stays. -->
+        <Grid x:Name="Body" RenderTransformOrigin="0,0">
+            <Grid.RenderTransform>
+                <ScaleTransform x:Name="BodyScale" />
+            </Grid.RenderTransform>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
