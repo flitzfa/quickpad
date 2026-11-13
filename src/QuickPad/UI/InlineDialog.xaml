@@ -1,0 +1,55 @@
+<UserControl x:Class="QuickPad.UI.InlineDialog"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Visibility="Collapsed" Background="Transparent"
+             KeyboardNavigation.TabNavigation="Cycle" KeyboardNavigation.DirectionalNavigation="Cycle">
+    <!-- Fills the window so clicks on the content behind it are swallowed; the strip itself sits at the bottom. -->
+    <UserControl.Resources>
+        <Style x:Key="DialogButton" TargetType="Button">
+            <Setter Property="Foreground" Value="{DynamicResource Text.Primary}" />
+            <Setter Property="Background" Value="{DynamicResource Control.Background}" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="Padding" Value="14,6" />
+            <Setter Property="Margin" Value="8,0,0,0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chip" Background="{TemplateBinding Background}" CornerRadius="8"
+                                BorderThickness="1" BorderBrush="Transparent" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chip" Property="Opacity" Value="0.85" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Chip" Property="Opacity" Value="0.7" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Chip" Property="BorderBrush" Value="{DynamicResource Focus.Ring}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource DialogButton}">
+            <Setter Property="Background" Value="{DynamicResource Accent}" />
+            <Setter Property="Foreground" Value="{DynamicResource Accent.Foreground}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+    </UserControl.Resources>
+
+    <Border x:Name="Strip" VerticalAlignment="Bottom" Margin="12" CornerRadius="12" Padding="16,12,12,12"
+            Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Surface.Border}" BorderThickness="1">
+        <Border.RenderTransform>
+            <TranslateTransform x:Name="StripShift" />
+        </Border.RenderTransform>
+        <DockPanel>
+            <StackPanel x:Name="Buttons" DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" />
+            <TextBlock x:Name="Message" FontSize="13" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,8,0" />
+        </DockPanel>
+    </Border>
+</UserControl>

@@ -6,4 +6,10 @@
     <SolidColorBrush x:Key="Text.Secondary" Color="#6E6E73" />
     <SolidColorBrush x:Key="Accent" Color="#0A64D6" />
     <SolidColorBrush x:Key="Accent.Soft" Color="#1A0A64D6" />
+    <SolidColorBrush x:Key="Surface" Color="#E6FFFFFF" />
+    <SolidColorBrush x:Key="Surface.Border" Color="#1A000000" />
+    <SolidColorBrush x:Key="Control.Background" Color="#14000000" />
+    <SolidColorBrush x:Key="Accent.Foreground" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="Focus.Ring" Color="#661C1C1E" />
+    <SolidColorBrush x:Key="Success" Color="#248A3D" />
 </ResourceDictionary>

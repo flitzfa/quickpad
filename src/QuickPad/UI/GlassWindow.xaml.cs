@@ -1,7 +1,6 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Documents;
-using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -15,6 +14,7 @@ namespace QuickPad.UI;
 public partial class GlassWindow : Window
 {
     private const double Gap = 8;
+    private const double PreviewWidth = 520;
     private nint _hwnd;
     private bool? _light;
     private bool _hiding;
@@ -33,23 +33,9 @@ public partial class GlassWindow : Window
     /// (physical screen pixels), or next to the cursor when null.</summary>
     public void ShowPreview(string path, Rect? anchor)
     {
-        FileName.Text = Path.GetFileName(path);
-        FolderName.Text = Path.GetDirectoryName(path);
-        try
-        {
-            ShowSegments(PreviewFormatter.Format(TextFile.Open(path, TextFile.PreviewBytes).Text));
-        }
-        catch (NotTextException) { ShowNotice("Este archivo no es texto"); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { ShowNotice("No se pudo abrir el archivo"); }
-
-        _hwnd = new WindowInteropHelper(this).EnsureHandle();
-        var origin = PlaceNear(anchor ?? CursorRect());
-        bool wasVisible = IsVisible;
-        _hiding = false;
-        Root.RenderTransformOrigin = origin;
-        Show();
-        Activate();
-        Animate(1, 1, 250, new BackEase { Amplitude = 0.3, EasingMode = EasingMode.EaseOut }, fromStart: !wasVisible);
+        LoadPreview(path);
+        Width = PreviewWidth;
+        Pop(PlaceNear(anchor ?? CursorRect()));
     }
 
     public void HideAnimated()
@@ -61,6 +47,7 @@ public partial class GlassWindow : Window
             if (!_hiding) return; // reopened while closing
             Hide();
             _hiding = false;
+            ResetEditor();
             Hidden?.Invoke();
         });
     }
@@ -90,18 +77,37 @@ public partial class GlassWindow : Window
         Native.DwmSetWindowAttribute(_hwnd, Native.DWMWA_USE_IMMERSIVE_DARK_MODE, _light == true ? 0 : 1);
     }
 
-    protected override void OnKeyDown(KeyEventArgs e)
-    {
-        base.OnKeyDown(e);
-        if (e.Key != Key.Escape) return;
-        e.Handled = true;
-        HideAnimated();
-    }
-
     protected override void OnDeactivated(EventArgs e)
     {
         base.OnDeactivated(e);
-        HideAnimated();
+        // A dialog waits for its answer wherever the focus went; Hide() itself deactivates while closing.
+        if (!Dialog.IsOpen && !_hiding) _ = CloseAsync();
+    }
+
+    /// <summary>Fills the header and the preview (or a notice) for <paramref name="path"/> and leaves edit mode.</summary>
+    private void LoadPreview(string path)
+    {
+        ResetEditor();
+        CurrentPath = path;
+        FileName.Text = Path.GetFileName(path);
+        FolderName.Text = Path.GetDirectoryName(path);
+        try
+        {
+            ShowSegments(PreviewFormatter.Format(TextFile.Open(path, TextFile.PreviewBytes).Text));
+        }
+        catch (NotTextException) { ShowNotice("Este archivo no es texto"); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { ShowNotice("No se pudo abrir el archivo"); }
+    }
+
+    /// <summary>Shows and activates the window with the open spring, scaling from <paramref name="origin"/>.</summary>
+    private void Pop(Point origin)
+    {
+        bool wasVisible = IsVisible;
+        _hiding = false;
+        Root.RenderTransformOrigin = origin;
+        Show();
+        Activate();
+        Animate(1, 1, 250, new BackEase { Amplitude = 0.3, EasingMode = EasingMode.EaseOut }, fromStart: !wasVisible);
     }
 
     private void ShowSegments(IReadOnlyList<Segment> segments)
@@ -137,12 +143,9 @@ public partial class GlassWindow : Window
     /// <summary>Sizes the window to its content and moves it next to <paramref name="anchorPx"/>; returns the scale origin.</summary>
     private Point PlaceNear(Rect anchorPx)
     {
-        // shortcut: converts with the DPI of the monitor the window is on now; a different-DPI target monitor may land a bit off.
-        var fromDevice = HwndSource.FromHwnd(_hwnd).CompositionTarget.TransformFromDevice;
-        var screenPx = System.Windows.Forms.Screen.FromRectangle(new System.Drawing.Rectangle(
-            (int)anchorPx.X, (int)anchorPx.Y, (int)anchorPx.Width, (int)anchorPx.Height)).WorkingArea;
-        var workArea = Rect.Transform(new Rect(screenPx.X, screenPx.Y, screenPx.Width, screenPx.Height), fromDevice);
-        var anchor = Rect.Transform(anchorPx, fromDevice);
+        var workArea = WorkArea(System.Windows.Forms.Screen.FromRectangle(new System.Drawing.Rectangle(
+            (int)anchorPx.X, (int)anchorPx.Y, (int)anchorPx.Width, (int)anchorPx.Height)));
+        var anchor = Rect.Transform(anchorPx, FromDevice());
 
         Root.Measure(new Size(Width, double.PositiveInfinity));
         Height = Math.Min(Root.DesiredSize.Height, workArea.Height - 2 * Gap);
@@ -151,6 +154,20 @@ public partial class GlassWindow : Window
         Left = topLeft.X;
         Top = topLeft.Y;
         return origin;
+    }
+
+    /// <summary>Work area of <paramref name="screen"/> in DIP.</summary>
+    private Rect WorkArea(System.Windows.Forms.Screen screen)
+    {
+        var px = screen.WorkingArea;
+        return Rect.Transform(new Rect(px.X, px.Y, px.Width, px.Height), FromDevice());
+    }
+
+    // shortcut: converts with the DPI of the monitor the window is on now; a different-DPI target monitor may land a bit off.
+    private Matrix FromDevice()
+    {
+        _hwnd = new WindowInteropHelper(this).EnsureHandle();
+        return HwndSource.FromHwnd(_hwnd).CompositionTarget.TransformFromDevice;
     }
 
     /// <summary>Animates scale and opacity from their current values, or from 0.9 and 0 when <paramref name="fromStart"/>.</summary>

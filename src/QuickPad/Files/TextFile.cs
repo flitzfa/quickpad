@@ -48,7 +48,9 @@ public static class TextFile
         }
         catch (DecoderFallbackException) when (skip == 0)
         {
-            enc = Encoding.GetEncoding(CultureInfo.CurrentCulture.TextInfo.ANSICodePage);
+            // ExceptionFallback: Save must throw on a char the code page cannot hold instead of writing '?'.
+            enc = Encoding.GetEncoding(CultureInfo.CurrentCulture.TextInfo.ANSICodePage,
+                EncoderFallback.ExceptionFallback, DecoderFallback.ReplacementFallback);
             chars = new char[enc.GetMaxCharCount(body.Length)];
             n = enc.GetDecoder().GetChars(body, chars, flush: true);
         }
@@ -66,13 +68,14 @@ public static class TextFile
             throw new FileChangedExternallyException(path);
 
         var text = Regex.Replace(newText, "\r\n|\r|\n", doc.LineEnding == LineEnding.CrLf ? "\r\n" : "\n");
+        var bytes = doc.Encoding.GetBytes(text); // before the temp file: may throw EncoderFallbackException
         var tmp = path + ".quickpad.tmp";
         try
         {
             using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
             {
                 fs.Write(doc.Encoding.GetPreamble());
-                fs.Write(doc.Encoding.GetBytes(text));
+                fs.Write(bytes);
             }
             if (info.Exists) File.Replace(tmp, path, null); else File.Move(tmp, path);
         }

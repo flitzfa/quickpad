@@ -135,4 +135,19 @@ public class TextFileSaveTests
         }
         finally { File.Delete(p); }
     }
+
+    [Fact]
+    public void Save_AnsiUnrepresentableChar_Throws()
+    {
+        var original = new byte[] { (byte)'a', 0xF1 };
+        var p = Write(original);
+        try
+        {
+            var doc = TextFile.Open(p);
+            Assert.Throws<EncoderFallbackException>(() => TextFile.Save(doc, doc.Text + "€✓"));
+            Assert.Equal(original, File.ReadAllBytes(p));
+            Assert.False(File.Exists(p + ".quickpad.tmp"));
+        }
+        finally { File.Delete(p); }
+    }
 }
