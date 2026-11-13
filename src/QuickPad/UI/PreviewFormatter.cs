@@ -12,6 +12,10 @@ public static partial class PreviewFormatter
     [GeneratedRegex(@"^(\s*""(?<key>[^""]+)""\s*:\s*)(?<val>.*)$")]
     private static partial Regex JsonLine();
 
+    // \b: "task-manager" is not an sk- token.
+    [GeneratedRegex(@"\b(sk-|ghp_|gho_|xoxb-|xoxp-|AKIA|AIza)[A-Za-z0-9_\-]{6,}")]
+    private static partial Regex PrefixedToken();
+
     [GeneratedRegex(@"^(\s*(export\s+)?(?<key>[A-Za-z_][\w.-]*)\s*[=:]\s*)(?<val>.*)$")]
     private static partial Regex EnvLine();
 
@@ -44,6 +48,8 @@ public static partial class PreviewFormatter
             parts.Add(new Segment(line[(key.Index + key.Length)..val.Index] + value, false));
         }
         else parts.Add(new Segment(line, false));
+        // Tokens anywhere else: minified JSON, YAML list items, prose.
+        parts = parts.Select(p => p.IsKey ? p : p with { Text = PrefixedToken().Replace(p.Text, t => Mask(t.Value)) }).ToList();
 
         int left = maxChars;
         if (parts.Sum(p => p.Text.Length) > maxChars)
@@ -90,10 +96,11 @@ public static partial class PreviewFormatter
         return v.Length == 0 ? value : open + Mask(v) + close;
     }
 
+    /// <summary>Keeps the edges only where they give nothing away: a known prefix, or a value long enough (16+).</summary>
     public static string Mask(string value)
     {
-        if (value.Length <= 8) return "••••••••";
-        var prefix = KnownPrefixes.FirstOrDefault(p => value.StartsWith(p, StringComparison.Ordinal)) ?? value[..3];
-        return prefix + "••••" + value[^4..];
+        var prefix = KnownPrefixes.FirstOrDefault(p => value.StartsWith(p, StringComparison.Ordinal));
+        if (value.Length <= 8 || (prefix is null && value.Length < 16)) return "••••••••";
+        return (prefix ?? value[..3]) + "••••" + value[^4..];
     }
 }

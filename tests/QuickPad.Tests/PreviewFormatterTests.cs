@@ -15,7 +15,35 @@ public class PreviewFormatterTests
 
     [Fact]
     public void Format_SecretByName_IsMasked() =>
-        Assert.Equal("API_KEY=abc••••3456", Join(PreviewFormatter.Format("API_KEY=abcdef123456")));
+        Assert.Equal("API_KEY=••••••••", Join(PreviewFormatter.Format("API_KEY=abcdef123456")));
+
+    [Fact]
+    public void Format_LongSecretWithoutPrefix_KeepsEdges() =>
+        Assert.Equal("PASSWORD=abc••••6789", Join(PreviewFormatter.Format("PASSWORD=abcdefghij0123456789")));
+
+    [Fact]
+    public void Format_MinifiedJsonSecret_IsMasked()
+    {
+        var j = Join(PreviewFormatter.Format("{\"api_key\":\"sk-proj9999abcd3f9a\",\"x\":1}"));
+        Assert.Contains("sk-••••3f9a", j);
+        Assert.DoesNotContain("proj9999", j);
+    }
+
+    [Fact]
+    public void Format_YamlListSecret_IsMasked() =>
+        Assert.Equal("- ghp_••••1234", Join(PreviewFormatter.Format("- ghp_aaaaaaaa1234")));
+
+    [Fact]
+    public void Format_PrefixInsideWord_Untouched() =>
+        Assert.Equal("run task-manager now", Join(PreviewFormatter.Format("run task-manager now")));
+
+    [Fact]
+    public void Format_SecretBeyondCut_MaskedBeforeCut()
+    {
+        var j = Join(PreviewFormatter.Format(new string('a', 180) + " ghp_aaaaaaaa1234 " + new string('b', 50)));
+        Assert.EndsWith("…", j);
+        Assert.Contains("ghp_••••1234", j);
+    }
 
     [Fact]
     public void Format_SecretByPrefix_IsMasked() =>
